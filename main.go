@@ -17,6 +17,7 @@ import (
 
 const serverName = "filterctld"
 const SHUTDOWN_TIMEOUT = 5
+const Version = "0.0.2"
 
 var classesFile = "/home/mkrueger/classes.json"
 
