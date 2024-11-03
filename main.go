@@ -53,19 +53,20 @@ func succeed(w http.ResponseWriter, message string, status int, result []classes
 	json.NewEncoder(w).Encode(Response{true, message, result})
 }
 
-func checkClientCert(w http.ResponseWriter, r *http.Request) {
+func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
 	usernameHeader, ok := r.Header["X-Client-Cert-Dn"]
 	if !ok {
 		fail(w, "missing client cert DN", http.StatusBadRequest)
-		return
+		return false
 	}
 	if Verbose {
 		log.Printf("client cert dn: %s\n", usernameHeader[0])
 	}
 	if usernameHeader[0] != "CN=filterctl" {
 		fail(w, fmt.Sprintf("client cert (%s) != filterctl", usernameHeader[0]), http.StatusBadRequest)
-		return
+		return false
 	}
+	return true
 }
 
 func readConfig(w http.ResponseWriter) (*classes.SpamClasses, bool) {
@@ -97,7 +98,9 @@ func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address str
 }
 
 func handleGetClasses(w http.ResponseWriter, r *http.Request) {
-	checkClientCert(w, r)
+	if !checkClientCert(w, r) {
+		return
+	}
 	address := r.PathValue("address")
 	log.Printf("GET address=%s\n", address)
 	config, ok := readConfig(w)
@@ -107,7 +110,9 @@ func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
-	checkClientCert(w, r)
+	if !checkClientCert(w, r) {
+		return
+	}
 	address := r.PathValue("address")
 	name := r.PathValue("name")
 	threshold := r.PathValue("threshold")
@@ -127,7 +132,9 @@ func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteClasses(w http.ResponseWriter, r *http.Request) {
-	checkClientCert(w, r)
+	if !checkClientCert(w, r) {
+		return
+	}
 	address := r.PathValue("address")
 	log.Printf("DELETE address=%s\n", address)
 	config, ok := readConfig(w)
