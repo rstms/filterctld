@@ -17,11 +17,12 @@ import (
 )
 
 const serverName = "filterctld"
+const defaultConfigFile = "/etc/mail/filter_rspamd_classes.json"
 const defaultPort = 2016
 const SHUTDOWN_TIMEOUT = 5
 const Version = "0.1.4"
 
-var configFile = "/home/mkrueger/classes.json"
+var configFile string
 
 var (
 	signalFlag = flag.String("s", "", `send signal:
@@ -167,7 +168,11 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1", "listen address")
 	port := flag.Int("port", defaultPort, "listen port")
 	debugFlag := flag.Bool("debug", false, "run in foreground mode")
+	configFileFlag := flag.String("config", defaultConfigFile, "rspamd class config file")
+
 	flag.Parse()
+
+	configFile = *configFileFlag
 
 	if !*debugFlag {
 		daemonize(addr, port)
