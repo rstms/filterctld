@@ -150,7 +150,7 @@ func handleDeleteClasses(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleUnknownPath(w http.ResponseWriter, r *http.Request) {
-	log.Printf("unknown path: %+v\n", r)
+	log.Printf("unknown path: %v\n", r.RequestURI)
 	fail(w, "unknown path", http.StatusBadRequest)
 }
 
@@ -162,9 +162,9 @@ func runServer(addr *string, port *int) {
 	}
 
 	http.HandleFunc(" /", handleUnknownPath)
-	http.HandleFunc("GET /classes/{address}", handleGetClasses)
-	http.HandleFunc("PUT /classes/{address}/{name}/{threshold}", handlePutClassThreshold)
-	http.HandleFunc("DELETE /classes/{address}", handleDeleteClasses)
+	http.HandleFunc("GET /filterctl/classes/{address}", handleGetClasses)
+	http.HandleFunc("PUT /filterctl/classes/{address}/{name}/{threshold}", handlePutClassThreshold)
+	http.HandleFunc("DELETE /filterctl/classes/{address}", handleDeleteClasses)
 
 	go func() {
 		log.Printf("%s v%s rspamd_classes=v%s started as PID %d listening on %s\n", serverName, Version, classes.Version, os.Getpid(), listen)
