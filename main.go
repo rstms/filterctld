@@ -131,27 +131,35 @@ func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleDeleteClasses(w http.ResponseWriter, r *http.Request) {
+func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if !checkClientCert(w, r) {
 		return
 	}
 	address := r.PathValue("address")
-	log.Printf("DELETE address=%s\n", address)
+	log.Printf("DELETE (user) address=%s\n", address)
 	config, ok := readConfig(w)
 	if ok {
-		_, ok := config.Classes[address]
-		if ok {
-			config.Classes[address] = nil
-		}
+		config.DeleteClasses(address)
 		if writeConfig(w, config) {
 			sendClasses(w, config, address)
 		}
 	}
 }
 
-func handleUnknownPath(w http.ResponseWriter, r *http.Request) {
-	log.Printf("unknown path: %v\n", r.RequestURI)
-	fail(w, "unknown path", http.StatusBadRequest)
+func handleDeleteClass(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
+	}
+	address := r.PathValue("address")
+	name := r.PathValue("name")
+	log.Printf("DELETE (class) address=%s name=%s\n", address, name)
+	config, ok := readConfig(w)
+	if ok {
+		config.DeleteClass(address, name)
+		if writeConfig(w, config) {
+			sendClasses(w, config, address)
+		}
+	}
 }
 
 func runServer(addr *string, port *int) {
@@ -161,10 +169,10 @@ func runServer(addr *string, port *int) {
 		Addr: listen,
 	}
 
-	http.HandleFunc(" /", handleUnknownPath)
 	http.HandleFunc("GET /filterctl/classes/{address}", handleGetClasses)
 	http.HandleFunc("PUT /filterctl/classes/{address}/{name}/{threshold}", handlePutClassThreshold)
-	http.HandleFunc("DELETE /filterctl/classes/{address}", handleDeleteClasses)
+	http.HandleFunc("DELETE /filterctl/classes/{address}", handleDeleteUser)
+	http.HandleFunc("DELETE /filterctl/classes/{address}/{name}", handleDeleteClass)
 
 	go func() {
 		log.Printf("%s v%s rspamd_classes=v%s started as PID %d listening on %s\n", serverName, Version, classes.Version, os.Getpid(), listen)
