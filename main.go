@@ -149,12 +149,19 @@ func handleDeleteClasses(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleUnknownPath(w http.ResponseWriter, r *http.Request) {
+	log.Printf("unknown path: %+v\n", r)
+	fail(w, "unknown path", http.StatusBadRequest)
+}
+
 func runServer(addr *string, port *int) {
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	server := http.Server{
 		Addr: listen,
 	}
+
+	http.HandleFunc(" /", handleUnknownPath)
 	http.HandleFunc("GET /classes/{address}", handleGetClasses)
 	http.HandleFunc("PUT /classes/{address}/{name}/{threshold}", handlePutClassThreshold)
 	http.HandleFunc("DELETE /classes/{address}", handleDeleteClasses)
