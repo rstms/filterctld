@@ -13,3 +13,6 @@ install: build
 
 test:
 	go test -v 
+
+release: build test
+	bump && gh release create v$$(cat VERSION) --notes "v$$(cat VERSION)"

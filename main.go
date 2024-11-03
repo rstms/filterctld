@@ -5,21 +5,23 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/rstms/filter-rspamd-class/classes"
+	"github.com/rstms/rspamd-classes/classes"
 	"github.com/sevlyar/go-daemon"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
 
 const serverName = "filterctld"
+const defaultPort = 2016
 const SHUTDOWN_TIMEOUT = 5
 const Version = "0.0.3"
 
-var classesFile = "/home/mkrueger/classes.json"
+var configFile = "/home/mkrueger/classes.json"
 
 var (
 	signalFlag = flag.String("s", "", `send signal:
@@ -30,42 +32,58 @@ var (
 	reload   = make(chan struct{})
 )
 
-type ErrorResponse struct {
-	Error  bool
-	Detail string
+type Response struct {
+	Success bool
+	Message string
+	Classes []classes.SpamClass
 }
 
 func fail(w http.ResponseWriter, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(ErrorResponse{true, message})
+	json.NewEncoder(w).Encode(Response{false, message, []classes.SpamClass{}})
 }
 
-func respond(w http.ResponseWriter, response any) {
-	log.Printf("  [200] %v", response)
-	json.NewEncoder(w).Encode(response)
+func succeed(w http.ResponseWriter, message string, status int, result []classes.SpamClass) {
+	log.Printf("  [%d] %s", status, message)
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(Response{true, message, result})
 }
 
-func getConfig(address string) (*classes.SpamClasses, bool) {
-    config, err := classes.New(classesFile)
-    if err != nil {
-	fail(w, "failed reading classes", http.StatusInternalServerError)
-	return nil, false
-    }
-    return config, true
+func readConfig(w http.ResponseWriter) (*classes.SpamClasses, bool) {
+	config, err := classes.New(configFile)
+	if err != nil {
+		fail(w, "configuration read failed", http.StatusInternalServerError)
+		return nil, false
+	}
+	return config, true
+}
+
+func writeConfig(w http.ResponseWriter, config *classes.SpamClasses) bool {
+	err := config.Write(configFile)
+	if err != nil {
+		fail(w, "configuration write failed", http.StatusInternalServerError)
+		return false
+	}
+	return true
+}
+
+func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address string) {
+	result, ok := config.Classes[address]
+	if ok {
+		message := fmt.Sprintf("%s spam classes", address)
+		succeed(w, message, http.StatusOK, result)
+		return
+	}
+	fail(w, "address not found", http.StatusNotFound)
 }
 
 func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 	address := r.PathValue("address")
 	log.Printf("GET address=%s\n", address)
-	config, ok := getConfig()
+	config, ok := readConfig(w)
 	if ok {
-	    classes, ok := config.Classes[address]
-	    if !ok {
-		fail(w, "address not found", http.StatusNotFound)
-		return
-	    }
-	    respond(w, classes)
+		sendClasses(w, config, address)
 	}
 }
 
@@ -74,16 +92,33 @@ func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	threshold := r.PathValue("threshold")
 	log.Printf("PUT address=%s name=%s threshold=%s\n", address, name, threshold)
-	config, ok := getConfig()
+	score, err := strconv.ParseFloat(threshold, 32)
+	if err != nil {
+		fail(w, "threshold conversion failed", http.StatusBadRequest)
+		return
+	}
+	config, ok := readConfig(w)
 	if ok {
-	    config.Set
+		config.SetThreshold(address, name, float32(score))
+		if writeConfig(w, config) {
+			sendClasses(w, config, address)
+		}
 	}
 }
 
 func handleDeleteClasses(w http.ResponseWriter, r *http.Request) {
 	address := r.PathValue("address")
 	log.Printf("DELETE address=%s\n", address)
-	http.Error(w, "WAT?", http.StatusNotFound)
+	config, ok := readConfig(w)
+	if ok {
+		_, ok := config.Classes[address]
+		if ok {
+			config.Classes[address] = nil
+		}
+		if writeConfig(w, config) {
+			sendClasses(w, config, address)
+		}
+	}
 }
 
 func runServer(addr *string, port *int) {
@@ -94,10 +129,10 @@ func runServer(addr *string, port *int) {
 	}
 	http.HandleFunc("GET /classes/{address}", handleGetClasses)
 	http.HandleFunc("PUT /classes/{address}/{name}/{threshold}", handlePutClassThreshold)
-	http.HandleFunc("DELETE /classess/{address}", handleDeleteClasses)
+	http.HandleFunc("DELETE /classes/{address}", handleDeleteClasses)
 
 	go func() {
-		log.Printf("%s started as PID %d listening on %s\n", serverName, os.Getpid(), listen)
+		log.Printf("%s v%s rspamd_classes=v%s started as PID %d listening on %s\n", serverName, Version, classes.Version, os.Getpid(), listen)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalln("ListenAndServe failed: ", err)
@@ -130,7 +165,7 @@ func reloadHandler(sig os.Signal) error {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1", "listen address")
-	port := flag.Int("port", 2014, "listen port")
+	port := flag.Int("port", defaultPort, "listen port")
 	debugFlag := flag.Bool("debug", false, "run in foreground mode")
 	flag.Parse()
 
