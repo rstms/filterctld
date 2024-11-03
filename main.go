@@ -22,6 +22,8 @@ const defaultPort = 2016
 const SHUTDOWN_TIMEOUT = 5
 const Version = "0.1.6"
 
+var Verbose bool
+
 var configFile string
 
 var (
@@ -49,6 +51,21 @@ func succeed(w http.ResponseWriter, message string, status int, result []classes
 	log.Printf("  [%d] %s", status, message)
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(Response{true, message, result})
+}
+
+func checkClientCert(w http.ResponseWriter, r *http.Request) {
+	usernameHeader, ok := r.Header["X-Client-Cert-Dn"]
+	if !ok {
+		fail(w, "missing client cert DN", http.StatusBadRequest)
+		return
+	}
+	if Verbose {
+		log.Printf("client cert dn: %s\n", usernameHeader[0])
+	}
+	if usernameHeader[0] != "CN=filterctl" {
+		fail(w, fmt.Sprintf("client cert (%s) != filterctl", usernameHeader[0]), http.StatusBadRequest)
+		return
+	}
 }
 
 func readConfig(w http.ResponseWriter) (*classes.SpamClasses, bool) {
@@ -80,6 +97,7 @@ func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address str
 }
 
 func handleGetClasses(w http.ResponseWriter, r *http.Request) {
+	checkClientCert(w, r)
 	address := r.PathValue("address")
 	log.Printf("GET address=%s\n", address)
 	config, ok := readConfig(w)
@@ -89,6 +107,7 @@ func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
+	checkClientCert(w, r)
 	address := r.PathValue("address")
 	name := r.PathValue("name")
 	threshold := r.PathValue("threshold")
@@ -108,6 +127,7 @@ func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteClasses(w http.ResponseWriter, r *http.Request) {
+	checkClientCert(w, r)
 	address := r.PathValue("address")
 	log.Printf("DELETE address=%s\n", address)
 	config, ok := readConfig(w)
@@ -168,11 +188,13 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1", "listen address")
 	port := flag.Int("port", defaultPort, "listen port")
 	debugFlag := flag.Bool("debug", false, "run in foreground mode")
+	verboseFlag := flag.Bool("verbose", false, "verbose mode")
 	configFileFlag := flag.String("config", defaultConfigFile, "rspamd class config file")
 
 	flag.Parse()
 
 	configFile = *configFileFlag
+	Verbose = *verboseFlag
 
 	if !*debugFlag {
 		daemonize(addr, port)
