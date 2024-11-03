@@ -19,7 +19,7 @@ import (
 const serverName = "filterctld"
 const defaultPort = 2016
 const SHUTDOWN_TIMEOUT = 5
-const Version = "0.0.3"
+const Version = "0.1.0"
 
 var configFile = "/home/mkrueger/classes.json"
 
