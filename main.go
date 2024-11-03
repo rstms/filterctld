@@ -20,7 +20,7 @@ const serverName = "filterctld"
 const defaultConfigFile = "/etc/mail/filter_rspamd_classes.json"
 const defaultPort = 2016
 const SHUTDOWN_TIMEOUT = 5
-const Version = "0.1.7"
+const Version = "0.1.8"
 
 var Verbose bool
 
