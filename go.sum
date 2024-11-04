@@ -4,8 +4,8 @@ github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 h1:iQTw/8FWTuc7uia
 github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0/go.mod h1:1NbS8ALrpOvjt0rHPNLyCIeMtbizbir8U//inJ+zuB8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/rstms/rspamd-classes v0.2.3 h1:XhT6CuRZr2Wkkwhf6Jozr2MyHjz0A+gcMEvs7xM4dvE=
-github.com/rstms/rspamd-classes v0.2.3/go.mod h1:n50t9tZFwJgfyl7FFG7xXA5iTxybEyFnt8IlR2hQJRg=
+github.com/rstms/rspamd-classes v0.2.7 h1:sIVU5QcBqIjJ2YUcrmoaj2VODkftSsmL3pRh9qK1QDo=
+github.com/rstms/rspamd-classes v0.2.7/go.mod h1:n50t9tZFwJgfyl7FFG7xXA5iTxybEyFnt8IlR2hQJRg=
 github.com/sevlyar/go-daemon v0.1.6 h1:EUh1MDjEM4BI109Jign0EaknA2izkOyi0LV3ro3QQGs=
 github.com/sevlyar/go-daemon v0.1.6/go.mod h1:6dJpPatBT9eUwM5VCw9Bt6CdX9Tk6UWvhW3MebLDRKE=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
