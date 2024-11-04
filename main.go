@@ -92,13 +92,9 @@ func writeConfig(w http.ResponseWriter, config *classes.SpamClasses) bool {
 }
 
 func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address string) {
-	result, ok := config.Classes[address]
-	if ok {
-		message := fmt.Sprintf("%s spam classes", address)
-		succeed(w, message, http.StatusOK, result)
-		return
-	}
-	fail(w, "address not found", http.StatusNotFound)
+	result := config.GetClasses(address)
+	message := fmt.Sprintf("%s spam classes", address)
+	succeed(w, message, http.StatusOK, result)
 }
 
 func handleGetClass(w http.ResponseWriter, r *http.Request) {
