@@ -23,6 +23,7 @@ const SHUTDOWN_TIMEOUT = 5
 const Version = "0.2.2"
 
 var Verbose bool
+var Debug bool
 
 var configFile string
 
@@ -54,6 +55,9 @@ func succeed(w http.ResponseWriter, message string, status int, result []classes
 }
 
 func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
+	if Debug {
+		return true
+	}
 	usernameHeader, ok := r.Header["X-Client-Cert-Dn"]
 	if !ok {
 		fail(w, "missing client cert DN", http.StatusBadRequest)
@@ -95,6 +99,25 @@ func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address str
 		return
 	}
 	fail(w, "address not found", http.StatusNotFound)
+}
+
+func handleGetClass(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
+	}
+	address := r.PathValue("address")
+	scoreParam := r.PathValue("score")
+	log.Printf("GET address=%s score=%s\n", address, scoreParam)
+	score, err := strconv.ParseFloat(scoreParam, 32)
+	if err != nil {
+		fail(w, "score conversion failed", http.StatusBadRequest)
+		return
+	}
+	config, ok := readConfig(w)
+	if ok {
+		class := config.GetClass([]string{address}, float32(score))
+		succeed(w, class, http.StatusOK, []classes.SpamClass{{class, float32(score)}})
+	}
 }
 
 func handleGetClasses(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +164,8 @@ func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		config.DeleteClasses(address)
 		if writeConfig(w, config) {
-			sendClasses(w, config, address)
+			result := []classes.SpamClass{}
+			succeed(w, "deleted", http.StatusOK, result)
 		}
 	}
 }
@@ -170,6 +194,7 @@ func runServer(addr *string, port *int) {
 	}
 
 	http.HandleFunc("GET /filterctl/classes/{address}", handleGetClasses)
+	http.HandleFunc("GET /filterctl/class/{address}/{score}", handleGetClass)
 	http.HandleFunc("PUT /filterctl/classes/{address}/{name}/{threshold}", handlePutClassThreshold)
 	http.HandleFunc("DELETE /filterctl/classes/{address}", handleDeleteUser)
 	http.HandleFunc("DELETE /filterctl/classes/{address}/{name}", handleDeleteClass)
@@ -217,6 +242,7 @@ func main() {
 
 	configFile = *configFileFlag
 	Verbose = *verboseFlag
+	Debug = *debugFlag
 
 	if !*debugFlag {
 		daemonize(addr, port)
