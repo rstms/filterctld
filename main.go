@@ -175,7 +175,7 @@ func runServer(addr *string, port *int) {
 	http.HandleFunc("DELETE /filterctl/classes/{address}/{name}", handleDeleteClass)
 
 	go func() {
-		log.Printf("%s v%s rspamd_classes=v%s started as PID %d listening on %s\n", serverName, Version, classes.Version, os.Getpid(), listen)
+		log.Printf("%s v%s rspamd_classes=v%s uid=%d gid=%d started as PID %d listening on %s\n", serverName, Version, classes.Version, os.Getuid(), os.Getgid(), os.Getpid(), listen)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalln("ListenAndServe failed: ", err)

@@ -5,7 +5,7 @@ filter = filter-rspamd-class
 build: fmt
 	fix go build
 
-fmt:
+fmt: go.sum
 	fix go fmt . ./...
 
 install: build
@@ -19,3 +19,12 @@ release: build test
 
 clean:
 	go clean 
+
+sterile: clean
+	rm -f go.mod go.sum
+
+go.sum: go.mod
+	go mod tidy
+
+go.mod:
+	go mod init
