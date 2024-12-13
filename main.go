@@ -175,6 +175,7 @@ func handleDeleteClass(w http.ResponseWriter, r *http.Request) {
 	log.Printf("DELETE (class) address=%s name=%s\n", address, name)
 	config, ok := readConfig(w)
 	if ok {
+		config.GetClasses(address)
 		config.DeleteClass(address, name)
 		if writeConfig(w, config) {
 			sendClasses(w, config, address)

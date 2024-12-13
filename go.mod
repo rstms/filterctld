@@ -3,7 +3,7 @@ module github.com/rstms/filterctld
 go 1.22.5
 
 require (
-	github.com/rstms/rspamd-classes v0.3.0
+	github.com/rstms/rspamd-classes v0.3.2
 	github.com/sevlyar/go-daemon v0.1.6
 	github.com/stretchr/testify v1.10.0
 )
