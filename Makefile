@@ -1,6 +1,16 @@
-# filter-rspamd-class  makefile
+# go makefile
 
-filter = filter-rspamd-class
+program != basename $$(pwd)
+
+latest_release != gh release list --json tagName --jq '.[0].tagName' | tr -d v
+version != cat VERSION
+
+gitclean = if git status --porcelain | grep '^.*$$'; then echo git status is dirty; false; else echo git status is clean; true; fi
+
+install_dir = /usr/local/bin
+postinstall =
+
+$(program): build
 
 build: fmt
 	fix go build
@@ -8,24 +18,32 @@ build: fmt
 fmt: go.sum
 	fix go fmt . ./...
 
-install: build
-	doas install -m 0555 $(filter) /usr/local/libexec/smtpd/$(filter) && doas rcctl restart smtpd
-
-test:
-	go test -v 
-
-release: build test
-	bump && gh release create v$$(cat VERSION) --notes "v$$(cat VERSION)"
-
-clean:
-	go clean 
-
-sterile: clean
-	go clean -r -cache -modcache
-	rm -f go.mod go.sum
+go.mod:
+	go mod init
 
 go.sum: go.mod
 	go mod tidy
 
-go.mod:
-	go mod init
+install: build
+	doas install -m 0755 $(program) $(install_dir)/$(program) $(postinstall)
+
+test:
+	fix -- go test -v . ./...
+
+release:
+	@$(gitclean) || { [ -n "$(dirty)" ] && echo "allowing dirty release"; }
+	@$(if $(update),gh release delete -y v$(version),)
+	gh release create v$(version) --notes "v$(version)"
+
+clean:
+	rm -f $(program)
+	go clean
+
+sterile: clean
+	go clean -r
+	go clean -cache
+	go clean -modcache
+	rm -f go.mod go.sum
+
+run: $(program)
+	./filterctld -config ./config.json -debug
