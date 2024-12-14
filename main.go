@@ -18,6 +18,7 @@ import (
 
 const serverName = "filterctld"
 const defaultConfigFile = "/etc/mail/filter_rspamd_classes.json"
+const defaultLogFile = "/var/log/filterctl/filterctld.log"
 const defaultPort = 2016
 const SHUTDOWN_TIMEOUT = 5
 const Version = "0.2.9"
@@ -234,15 +235,22 @@ func main() {
 	debugFlag := flag.Bool("debug", false, "run in foreground mode")
 	verboseFlag := flag.Bool("verbose", false, "verbose mode")
 	configFileFlag := flag.String("config", defaultConfigFile, "rspamd class config file")
+	logFileFlag := flag.String("logfile", defaultLogFile, "log file full pathname")
+	versionFlag := flag.Bool("version", false, "output version")
 
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("%s v%s\n", os.Args[0], Version)
+		os.Exit(0)
+	}
 
 	configFile = *configFileFlag
 	Verbose = *verboseFlag
 	Debug = *debugFlag
 
 	if !*debugFlag {
-		daemonize(addr, port)
+		daemonize(logFileFlag, addr, port)
 		os.Exit(0)
 	}
 	go runServer(addr, port)
@@ -253,13 +261,13 @@ func main() {
 	os.Exit(0)
 }
 
-func daemonize(addr *string, port *int) {
+func daemonize(logFilename, addr *string, port *int) {
 
 	daemon.AddCommand(daemon.StringFlag(signalFlag, "stop"), syscall.SIGTERM, stopHandler)
 	daemon.AddCommand(daemon.StringFlag(signalFlag, "reload"), syscall.SIGHUP, reloadHandler)
 
 	ctx := &daemon.Context{
-		LogFileName: "/var/log/filterctld.log",
+		LogFileName: *logFilename,
 		LogFilePerm: 0600,
 		WorkDir:     "/",
 		Umask:       007,
