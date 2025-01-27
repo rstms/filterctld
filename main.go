@@ -233,6 +233,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1", "listen address")
 	port := flag.Int("port", defaultPort, "listen port")
 	debugFlag := flag.Bool("debug", false, "run in foreground mode")
+	initFlag := flag.Bool("init", false, "initialize config file and exit")
 	verboseFlag := flag.Bool("verbose", false, "verbose mode")
 	configFileFlag := flag.String("config", defaultConfigFile, "rspamd class config file")
 	logFileFlag := flag.String("logfile", defaultLogFile, "log file full pathname")
@@ -248,6 +249,26 @@ func main() {
 	configFile = *configFileFlag
 	Verbose = *verboseFlag
 	Debug = *debugFlag
+
+	if *initFlag {
+		_, err := os.Stat(configFile)
+		if err == nil {
+			log.Fatalf("refusing init: file %s exists", configFile)
+		} else if os.IsNotExist(err) {
+			config, err := classes.New("")
+			if err != nil {
+				log.Fatalln("failure creating classes:", err)
+			}
+			err = config.Write(configFile)
+			if err != nil {
+				log.Fatalln("failure writing config file:", err)
+			}
+			fmt.Printf("config written: %s\n", configFile)
+			os.Exit(0)
+		} else {
+			log.Fatalf("failure checking file:", err)
+		}
+	}
 
 	if !*debugFlag {
 		daemonize(logFileFlag, addr, port)
