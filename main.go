@@ -592,6 +592,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error reading /etc/mabctl/config: %v", err)
 	}
+	if Verbose {
+		log.Printf("config read from %s\n", viper.ConfigFileUsed())
+	}
 
 	if !*debugFlag {
 		daemonize(logFileFlag, addr, port)
