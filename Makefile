@@ -40,7 +40,7 @@ clean:
 	go clean
 
 sterile: clean
-	which filterctld && go clean -i
+	which filterctld && go clean -i || true
 	go clean -r
 	go clean -cache
 	go clean -modcache
