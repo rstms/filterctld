@@ -41,7 +41,7 @@ clean:
 
 sterile: clean
 	which filterctld && go clean -i || true
-	go clean -r
+	go clean -r || true
 	go clean -cache
 	go clean -modcache
 	rm -f go.mod go.sum

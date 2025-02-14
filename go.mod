@@ -2,6 +2,8 @@ module github.com/rstms/filterctld
 
 go 1.22.5
 
+toolchain go1.23.6
+
 require (
 	github.com/rstms/mabctl v1.3.4
 	github.com/rstms/rspamd-classes v0.3.3
