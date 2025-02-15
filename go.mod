@@ -1,12 +1,10 @@
 module github.com/rstms/filterctld
 
-go 1.22.5
-
-toolchain go1.23.6
+go 1.22.1
 
 require (
-	github.com/rstms/mabctl v1.3.4
-	github.com/rstms/rspamd-classes v0.3.3
+	github.com/rstms/mabctl v1.3.5
+	github.com/rstms/rspamd-classes v1.0.1
 	github.com/sevlyar/go-daemon v0.1.6
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
