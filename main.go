@@ -484,10 +484,14 @@ func handlePasswordRequest(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", apiResponse)
 	}
+	if !apiResponse.Success {
+		fail(w, apiResponse.Message, 404)
+		return
+	}
 	var response PasswordResponse
 	response.Success = true
 	response.Message = fmt.Sprintf("%s password", username)
-	response.Password = apiResponse
+	response.Password = apiResponse.Password
 	succeed(w, response.Message, &response)
 }
 
@@ -514,7 +518,7 @@ func runServer(addr *string, port *int) {
 	http.HandleFunc("DELETE /filterctl/book/{user}/{book}/{address}/", handleDeleteAddress)
 
 	go func() {
-		log.Printf("%s v%s rspamd_classes=v%s uid=%d gid=%d started as PID %d listening on %s\n", serverName, Version, classes.Version, os.Getuid(), os.Getgid(), os.Getpid(), listen)
+		log.Printf("%s v%s rspamd_classes=v%s mabctl_api=v%s, uid=%d gid=%d started as PID %d listening on %s\n", serverName, Version, classes.Version, api.Version, os.Getuid(), os.Getgid(), os.Getpid(), listen)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalln("ListenAndServe failed: ", err)
@@ -558,7 +562,7 @@ func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Printf("%s v%s\n", os.Args[0], Version)
+		fmt.Printf("%s v%s (api v%s)\n", os.Args[0], Version, api.Version)
 		os.Exit(0)
 	}
 
@@ -582,7 +586,7 @@ func main() {
 			fmt.Printf("config written: %s\n", configFile)
 			os.Exit(0)
 		} else {
-			log.Fatalf("failure checking file:", err)
+			log.Fatalf("failure checking file: %v", err)
 		}
 	}
 
