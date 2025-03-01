@@ -23,7 +23,7 @@ const defaultConfigFile = "/etc/mail/filter_rspamd_classes.json"
 const defaultLogFile = "/var/log/filterctld.log"
 const defaultPort = 2016
 const SHUTDOWN_TIMEOUT = 5
-const Version = "0.3.1"
+const Version = "0.3.2"
 
 var Verbose bool
 var Debug bool
@@ -595,6 +595,9 @@ func main() {
 	err := viper.ReadInConfig()
 	if err != nil {
 		log.Fatalf("Error reading /etc/mabctl/config: %v", err)
+	}
+	if Verbose {
+		log.Printf("config read from %s\n", viper.ConfigFileUsed())
 	}
 
 	if !*debugFlag {
