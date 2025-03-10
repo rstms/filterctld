@@ -120,17 +120,43 @@ func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func logConfig(w http.ResponseWriter, config *classes.SpamClasses, label, user, request string) error {
+
+	if Verbose {
+		data, err := json.MarshalIndent(&config.Classes, "", "  ")
+		if err != nil {
+			return err
+		}
+		log.Printf("BEGIN-%s: user=%s request=%s\n%s\nEND-%s\n", label, user, request, string(data), label)
+	}
+	return nil
+}
+
 func readConfig(w http.ResponseWriter, user, request string) (*classes.SpamClasses, bool) {
 	config, err := classes.New(configFile)
 	if err != nil {
 		fail(w, user, request, "configuration read failed", http.StatusInternalServerError)
 		return nil, false
 	}
+	err = logConfig(w, config, "readConfig", user, request)
+	if err != nil {
+		msg := fmt.Sprintf("readConfig: logConfig failed: %v", err)
+		fail(w, user, request, msg, http.StatusInternalServerError)
+		return nil, false
+	}
 	return config, true
 }
 
 func writeConfig(w http.ResponseWriter, config *classes.SpamClasses, user, request string) bool {
-	err := config.Write(configFile)
+
+	err := logConfig(w, config, "writeConfig", user, request)
+	if err != nil {
+		msg := fmt.Sprintf("writeConfig: logConfig failed: %v", err)
+		fail(w, user, request, msg, http.StatusInternalServerError)
+		return false
+	}
+
+	err = config.Write(configFile)
 	if err != nil {
 		fail(w, user, request, "configuration write failed", http.StatusInternalServerError)
 		return false
@@ -187,6 +213,38 @@ func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 	config, ok := readConfig(w, address, requestString)
 	if ok {
 		sendClasses(w, config, address, requestString)
+	}
+}
+
+func handlePostClasses(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
+	}
+	type PostClassesRequest struct {
+		Address string
+		Classes []classes.SpamClass
+	}
+	var request PostClassesRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fail(w, "system", "post classes", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+	requestString := "post classes"
+	if Verbose {
+		log.Printf("POST address=%s classes=%v\n", request.Address, request.Classes)
+	}
+	config, ok := readConfig(w, request.Address, requestString)
+	if !ok {
+		fail(w, "system", "post classes", "readConfig failed", http.StatusBadRequest)
+		return
+	}
+	if len(request.Classes) == 0 {
+		request.Classes = config.GetClasses("default")
+	}
+	config.SetClasses(request.Address, request.Classes)
+	if writeConfig(w, config, request.Address, requestString) {
+		sendClasses(w, config, request.Address, requestString)
 	}
 }
 
@@ -307,7 +365,7 @@ func handleAddBook(w http.ResponseWriter, r *http.Request) {
 	var request CreateBookRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "create book", fmt.Sprintf("failed encoding request: %v", err), http.StatusBadRequest)
+		fail(w, "system", "create book", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	mab, ok := MAB(w)
@@ -369,7 +427,7 @@ func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 	var request AddAddressRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		fail(w, "system", "add address", fmt.Sprintf("failed encoding request: %v", err), http.StatusBadRequest)
+		fail(w, "system", "add address", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
 	requestString := fmt.Sprintf("add %s to %s", request.Address, request.Bookname)
@@ -535,6 +593,7 @@ func runServer(addr *string, port *int) {
 	}
 
 	http.HandleFunc("GET /filterctl/classes/{address}/", handleGetClasses)
+	http.HandleFunc("POST /filterctl/classes/", handlePostClasses)
 	http.HandleFunc("GET /filterctl/class/{address}/{score}/", handleGetClass)
 	http.HandleFunc("PUT /filterctl/classes/{address}/{name}/{threshold}/", handlePutClassThreshold)
 	http.HandleFunc("DELETE /filterctl/classes/{address}/", handleDeleteUser)
@@ -550,7 +609,11 @@ func runServer(addr *string, port *int) {
 	http.HandleFunc("DELETE /filterctl/address/{user}/{book}/{address}/", handleDeleteAddress)
 
 	go func() {
-		log.Printf("%s v%s rspamd_classes=v%s mabctl_api=v%s, uid=%d gid=%d started as PID %d listening on %s\n", serverName, Version, classes.Version, api.Version, os.Getuid(), os.Getgid(), os.Getpid(), listen)
+		mode := "daemon"
+		if Debug {
+			mode = "debug"
+		}
+		log.Printf("listening on %s in %s mode\n", listen, mode)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalln("ListenAndServe failed: ", err)
@@ -622,6 +685,8 @@ func main() {
 		}
 	}
 
+	log.Printf("%s v%s rspamd_classes=v%s mabctl_api=v%s, uid=%d gid=%d started as PID %d\n", serverName, Version, classes.Version, api.Version, os.Getuid(), os.Getgid(), os.Getpid())
+
 	viper.SetConfigType("yaml")
 	viper.SetConfigFile("/etc/mabctl/config")
 	err := viper.ReadInConfig()
@@ -629,7 +694,8 @@ func main() {
 		log.Fatalf("Error reading /etc/mabctl/config: %v", err)
 	}
 	if Verbose {
-		log.Printf("config read from %s\n", viper.ConfigFileUsed())
+		log.Printf("classes config: %s\n", configFile)
+		log.Printf("viper config: %s\n", viper.ConfigFileUsed())
 	}
 
 	if !*debugFlag {
