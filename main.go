@@ -27,6 +27,7 @@ const Version = "0.3.8"
 
 var Verbose bool
 var Debug bool
+var InsecureSkipClientCertificateValidation bool
 
 var configFile string
 
@@ -59,11 +60,6 @@ type ClassResponse struct {
 type BooksResponse struct {
 	Response
 	Books []string
-}
-
-type AddressesResponse struct {
-	Response
-	Addresses []string
 }
 
 type PasswordResponse struct {
@@ -102,7 +98,7 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 }
 
 func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
-	if Debug {
+	if InsecureSkipClientCertificateValidation {
 		return true
 	}
 	usernameHeader, ok := r.Header["X-Client-Cert-Dn"]
@@ -329,27 +325,69 @@ func handleListBooks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	apiResponse, err := mab.GetBooks(user)
+	response, err := mab.GetBooks(user)
 	if err != nil {
 		fail(w, user, requestString, fmt.Sprintf("api GetBooks failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	if Verbose {
-		log.Printf("response: %+v\n", apiResponse)
+		log.Printf("response: %+v\n", response)
 	}
-	var response BooksResponse
-	response.Request = requestString
 	response.User = user
-	response.Success = true
-	response.Message = apiResponse.Message
-	response.Books = make([]string, len(apiResponse.Books))
-	for i, book := range apiResponse.Books {
-		if Verbose {
-			log.Printf("book: %+v\n", book)
-		}
-		response.Books[i] = book.BookName
+	succeed(w, response.Message, &response)
+}
+
+func handleGetAccounts(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
 	}
+	requestString := "get accounts"
+	if Verbose {
+		log.Printf("GetAccounts\n")
+	}
+
+	mab, ok := MAB(w)
+	if !ok {
+		return
+	}
+	response, err := mab.GetAccounts()
+	if err != nil {
+		fail(w, "system", requestString, fmt.Sprintf("api GetAccounts failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if Verbose {
+		log.Printf("response: %+v\n", response)
+	}
+	succeed(w, response.Message, &response)
+}
+
+func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
+	}
+	user := r.PathValue("user")
+	requestString := fmt.Sprintf("dump user %s", user)
+	if Verbose {
+		log.Printf("GetUserDump user=%s\n", user)
+	}
+
+	mab, ok := MAB(w)
+	if !ok {
+		return
+	}
+
+	response, err := mab.Dump(user)
+	if err != nil {
+		fail(w, "system", requestString, fmt.Sprintf("api Dump(%s) failed: %v", user, err), http.StatusInternalServerError)
+		return
+	}
+
+	if Verbose {
+		log.Printf("Dump response: %+v", response)
+	}
+	response.User = user
 	succeed(w, response.Message, &response)
 }
 
@@ -385,6 +423,84 @@ func handleAddBook(w http.ResponseWriter, r *http.Request) {
 		log.Printf("response: %v\n", response)
 	}
 	succeed(w, response.Message, &Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
+	return
+
+}
+
+func handleAddUser(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
+	}
+	type CreateUserRequest struct {
+		Username string
+		Email    string
+		Password string
+	}
+	var request CreateUserRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fail(w, "system", "create user", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+	requestString := fmt.Sprintf("create user %s", request.Username)
+	mab, ok := MAB(w)
+	if !ok {
+		return
+	}
+	if Verbose {
+		log.Printf("AddUser: user=%s email=%s, password=XXXXXXXXX\n", request.Username, request.Email)
+	}
+	response, err := mab.AddUser(request.Username, request.Email, "")
+	if err != nil {
+		fail(w, request.Username, requestString, fmt.Sprintf("api.AddBook failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if Verbose {
+		log.Printf("response: %v\n", response)
+	}
+	succeed(w, response.Message, &Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
+	return
+
+}
+
+func handlePostRestore(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
+	}
+	type RestoreRequest struct {
+		Username string
+		Dump     api.ConfigDump
+	}
+	var request RestoreRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fail(w, "system", "restore user", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+	requestString := fmt.Sprintf("restore user %s", request.Username)
+	mab, ok := MAB(w)
+	if !ok {
+		return
+	}
+	if Verbose {
+		log.Printf("Restore: dump=%+v user=%s\n", request.Dump, request.Username)
+	}
+
+	_, err = mab.DeleteUser(request.Username)
+	if err != nil {
+		fail(w, request.Username, requestString, fmt.Sprintf("api.DeleteUser failed: %v", err), http.StatusBadRequest)
+	}
+
+	response, err := mab.Restore(&request.Dump, request.Username)
+	if err != nil {
+		fail(w, request.Username, requestString, fmt.Sprintf("api.Restore failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if Verbose {
+		log.Printf("response: %v\n", response)
+	}
+	response.User = request.Username
+	succeed(w, response.Message, &response)
 	return
 
 }
@@ -438,7 +554,7 @@ func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	response, err := mab.AddAddress(request.Username, request.Bookname, request.Address, request.Name)
+	response, err := mab.AddAddress(nil, request.Username, request.Bookname, request.Address, request.Name)
 	if err != nil {
 		fail(w, request.Username, requestString, fmt.Sprintf("api.AddAddress failed: %v", err), http.StatusInternalServerError)
 		return
@@ -491,7 +607,7 @@ func handleListAddresses(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	apiResponse, err := mab.Addresses(username, bookname)
+	apiResponse, err := mab.Addresses(nil, username, bookname)
 	if err != nil {
 		fail(w, username, requestString, fmt.Sprintf("api.Addresses failed: %v", err), http.StatusInternalServerError)
 		return
@@ -499,21 +615,7 @@ func handleListAddresses(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", apiResponse)
 	}
-	var response AddressesResponse
-	response.User = username
-	response.Request = requestString
-	response.Success = true
-	response.Message = apiResponse.Message
-	response.Addresses = make([]string, len(apiResponse.Addresses))
-	for i, addr := range apiResponse.Addresses {
-		field := addr.Card.Get("EMAIL")
-		if field == nil {
-			fail(w, username, requestString, fmt.Sprintf("failed decoding EMAIL field from VCARD: %+v", addr.Card), http.StatusInternalServerError)
-			return
-		}
-		response.Addresses[i] = field.Value
-	}
-	succeed(w, response.Message, &response)
+	succeed(w, apiResponse.Message, &apiResponse)
 }
 
 // return list of books containing address
@@ -605,6 +707,10 @@ func runServer(addr *string, port *int) {
 	http.HandleFunc("GET /filterctl/scan/{user}/{address}/", handleScanAddress)
 	http.HandleFunc("POST /filterctl/book/", handleAddBook)
 	http.HandleFunc("POST /filterctl/address/", handleAddAddress)
+	http.HandleFunc("POST /filterctl/user/", handleAddUser)
+	http.HandleFunc("POST /filterctl/accounts/", handleGetAccounts)
+	http.HandleFunc("POST /filterctl/restore/", handlePostRestore)
+	http.HandleFunc("GET /filterctl/dump/{user}/", handleGetUserDump)
 	http.HandleFunc("DELETE /filterctl/book/{user}/{book}/", handleDeleteBook)
 	http.HandleFunc("DELETE /filterctl/address/{user}/{book}/{address}/", handleDeleteAddress)
 
@@ -653,6 +759,7 @@ func main() {
 	configFileFlag := flag.String("config", defaultConfigFile, "rspamd class config file")
 	logFileFlag := flag.String("logfile", defaultLogFile, "log file full pathname")
 	versionFlag := flag.Bool("version", false, "output version")
+	insecureFlag := flag.Bool("insecure", false, "skip client certificate validation")
 
 	flag.Parse()
 
@@ -664,6 +771,7 @@ func main() {
 	configFile = *configFileFlag
 	Verbose = *verboseFlag
 	Debug = *debugFlag
+	InsecureSkipClientCertificateValidation = *insecureFlag
 
 	if *initFlag {
 		_, err := os.Stat(configFile)
@@ -687,6 +795,9 @@ func main() {
 
 	log.Printf("%s v%s rspamd_classes=v%s mabctl_api=v%s, uid=%d gid=%d started as PID %d\n", serverName, Version, classes.Version, api.Version, os.Getuid(), os.Getgid(), os.Getpid())
 
+	if InsecureSkipClientCertificateValidation {
+		log.Printf("WARNING: client certificate validation disabled\n")
+	}
 	viper.SetConfigType("yaml")
 	viper.SetConfigFile("/etc/mabctl/config")
 	err := viper.ReadInConfig()
