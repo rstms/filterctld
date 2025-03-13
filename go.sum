@@ -35,8 +35,8 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rogpeppe/go-internal v1.9.0 h1:73kH8U+JUqXU8lRuOHeVHaa/SZPifC7BkcraZVejAe8=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
-github.com/rstms/mabctl v1.5.7 h1:IZ0UdcMh/PiWl8u5Z9cCiOlbmdW7vG/z/cRbNcOXWk4=
-github.com/rstms/mabctl v1.5.7/go.mod h1:+/byRhTeGfEn94ZqWJGtoO6Nutnn40nFSOfsIfWgutA=
+github.com/rstms/mabctl v1.5.8 h1:StzTcvRVEaVNj6jkHEPjpL1eBJhRE/5uwK9/2p+BBJQ=
+github.com/rstms/mabctl v1.5.8/go.mod h1:+/byRhTeGfEn94ZqWJGtoO6Nutnn40nFSOfsIfWgutA=
 github.com/rstms/rspamd-classes v1.0.2 h1:7s1OVuA+Hdiyztozb9YYPoE4n/4jjEAbBLNUZAsUIgk=
 github.com/rstms/rspamd-classes v1.0.2/go.mod h1:InmAsVFlW544SFdpdRj54zZubQLNNaQdOIUJ5wRiaqc=
 github.com/sagikazarmark/locafero v0.4.0 h1:HApY1R9zGo4DBgr7dqsTH/JJxLTTsOt7u6keLGt6kNQ=

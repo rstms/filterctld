@@ -20,6 +20,8 @@ fmt: go.sum
 
 go.mod:
 	go mod init
+	go get github.com/rstms/mabctl@$(shell gh release --repo rstms/mabctl list --json tagName --jq '.[0].tagName')
+	go get github.com/rstms/rspamd-classes@$(shell gh release --repo rstms/rspamd-classes list --json tagName --jq '.[0].tagName')
 
 go.sum: go.mod
 	go mod tidy
