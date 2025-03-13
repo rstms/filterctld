@@ -7,10 +7,21 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
+func Initialize(t *testing.T) {
+	log.SetOutput(os.Stdout)
+	Verbose = true
+	viper.SetDefault("verbose", true)
+	InsecureSkipClientCertificateValidation = true
+	viper.SetConfigFile("/etc/mabctl/config.yaml")
+	viper.ReadInConfig()
+}
+
 func TestClasses(t *testing.T) {
+	Initialize(t)
 	config, err := classes.New("")
 	require.Nil(t, err)
 	require.NotNil(t, config)
@@ -18,14 +29,12 @@ func TestClasses(t *testing.T) {
 }
 
 func TestAccounts(t *testing.T) {
-
-	Verbose = true
-	InsecureSkipClientCertificateValidation = true
+	Initialize(t)
 	req := httptest.NewRequest("GET", "/filterctl/accounts/", nil)
-	req.Header.Set("X-Api-Key", viper.GetString("api-key"))
-	req.Header.Set("X-Admin-Username", viper.GetString("admin-username"))
-	req.Header.Set("X-Admin-Password", viper.GetString("admin-password"))
 	w := httptest.NewRecorder()
+	api, ok := MAB(w)
+	require.True(t, ok)
+	require.NotNil(t, api)
 	handleGetAccounts(w, req)
 	result := w.Result()
 	require.Equal(t, result.StatusCode, http.StatusOK)

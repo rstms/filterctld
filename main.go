@@ -40,30 +40,23 @@ var (
 	reload   = make(chan struct{})
 )
 
-type Response struct {
-	Success bool
-	User    string
-	Request string
-	Message string
-}
-
 type ClassesResponse struct {
-	Response
+	api.Response
 	Classes []classes.SpamClass
 }
 
 type ClassResponse struct {
-	Response
+	api.Response
 	Class string
 }
 
-type BooksResponse struct {
-	Response
+type ScanResponse struct {
+	api.Response
 	Books []string
 }
 
 type PasswordResponse struct {
-	Response
+	api.Response
 	Password string
 }
 
@@ -79,7 +72,7 @@ func MAB(w http.ResponseWriter) (*api.Controller, bool) {
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(Response{User: user, Request: request, Success: false, Message: message})
+	json.NewEncoder(w).Encode(api.Response{User: user, Request: request, Success: false, Message: message})
 }
 
 func succeed(w http.ResponseWriter, message string, result interface{}) {
@@ -286,7 +279,7 @@ func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	config.DeleteClasses(address)
 	if writeConfig(w, config, address, requestString) {
 		message := "user deleted"
-		succeed(w, message, &Response{User: address, Request: requestString, Success: true, Message: message})
+		succeed(w, message, &api.Response{User: address, Request: requestString, Success: true, Message: message})
 	}
 }
 
@@ -422,7 +415,7 @@ func handleAddBook(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", response)
 	}
-	succeed(w, response.Message, &Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
+	succeed(w, response.Message, &api.Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
 	return
 
 }
@@ -458,7 +451,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", response)
 	}
-	succeed(w, response.Message, &Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
+	succeed(w, response.Message, &api.Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
 	return
 
 }
@@ -527,7 +520,7 @@ func handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", response)
 	}
-	succeed(w, response.Message, &Response{User: username, Request: requestString, Message: response.Message, Success: true})
+	succeed(w, response.Message, &api.Response{User: username, Request: requestString, Message: response.Message, Success: true})
 }
 
 func handleAddAddress(w http.ResponseWriter, r *http.Request) {
@@ -562,7 +555,7 @@ func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", response)
 	}
-	succeed(w, response.Message, &Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
+	succeed(w, response.Message, &api.Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
 	return
 }
 
@@ -589,7 +582,7 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", response)
 	}
-	succeed(w, response.Message, &Response{User: username, Request: requestString, Message: response.Message, Success: true})
+	succeed(w, response.Message, &api.Response{User: username, Request: requestString, Message: response.Message, Success: true})
 	return
 }
 
@@ -607,15 +600,15 @@ func handleListAddresses(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	apiResponse, err := mab.Addresses(nil, username, bookname)
+	response, err := mab.Addresses(nil, username, bookname)
 	if err != nil {
 		fail(w, username, requestString, fmt.Sprintf("api.Addresses failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if Verbose {
-		log.Printf("response: %v\n", apiResponse)
+		log.Printf("response: %v\n", response)
 	}
-	succeed(w, apiResponse.Message, &apiResponse)
+	succeed(w, response.Message, &response)
 }
 
 // return list of books containing address
@@ -641,7 +634,7 @@ func handleScanAddress(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", apiResponse)
 	}
-	var response BooksResponse
+	var response ScanResponse
 	response.User = username
 	response.Request = requestString
 	response.Success = true
@@ -666,24 +659,19 @@ func handlePasswordRequest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	apiResponse, err := mab.GetPassword(username)
+	response, err := mab.GetPassword(username)
 	if err != nil {
 		fail(w, username, requestString, fmt.Sprintf("api.GetPassword failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if Verbose {
-		log.Printf("response: %v\n", apiResponse)
+		log.Printf("response: %v\n", response)
 	}
-	if !apiResponse.Success {
-		fail(w, username, requestString, apiResponse.Message, 404)
+	if !response.Success {
+		fail(w, username, requestString, response.Message, 404)
 		return
 	}
-	var response PasswordResponse
 	response.User = username
-	response.Request = requestString
-	response.Success = true
-	response.Message = fmt.Sprintf("%s password", username)
-	response.Password = apiResponse.Password
 	succeed(w, response.Message, &response)
 }
 
@@ -798,13 +786,13 @@ func main() {
 	if InsecureSkipClientCertificateValidation {
 		log.Printf("WARNING: client certificate validation disabled\n")
 	}
-	viper.SetConfigType("yaml")
-	viper.SetConfigFile("/etc/mabctl/config")
+	viper.SetConfigFile("/etc/mabctl/config.yaml")
 	err := viper.ReadInConfig()
 	if err != nil {
 		log.Fatalf("Error reading /etc/mabctl/config: %v", err)
 	}
 	if Verbose {
+		viper.Set("verbose", true)
 		log.Printf("classes config: %s\n", configFile)
 		log.Printf("viper config: %s\n", viper.ConfigFileUsed())
 	}

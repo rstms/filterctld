@@ -27,8 +27,8 @@ go.sum: go.mod
 install: build
 	doas install -m 0755 $(program) $(install_dir)/$(program) $(postinstall)
 
-test:
-	fix -- go test -v . ./...
+test: fmt
+	go test -v . ./...
 
 release:
 	@$(gitclean) || { [ -n "$(dirty)" ] && echo "allowing dirty release"; }
@@ -48,3 +48,4 @@ sterile: clean
 
 run: $(program)
 	./filterctld -config ./config.json -debug
+
