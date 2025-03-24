@@ -60,6 +60,13 @@ type PasswordResponse struct {
 	Password string
 }
 
+type DumpResponse struct {
+	api.Response
+	Classes  []classes.SpamClass
+	Books    map[string][]string
+	Password string
+}
+
 func MAB(w http.ResponseWriter) (*api.Controller, bool) {
 	api, err := api.NewAddressBookController()
 	if err != nil {
@@ -371,16 +378,36 @@ func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := mab.Dump(user)
+	apiResponse, err := mab.Dump(user)
 	if err != nil {
 		fail(w, "system", requestString, fmt.Sprintf("api Dump(%s) failed: %v", user, err), http.StatusInternalServerError)
 		return
 	}
 
 	if Verbose {
-		log.Printf("Dump response: %+v", response)
+		log.Printf("UserDump API Response: %+v\n", apiResponse)
 	}
+
+	config, ok := readConfig(w, user, requestString)
+	if !ok {
+		return
+	}
+
+	classes := config.GetClasses(user)
+	if Verbose {
+		log.Printf("UserDump Classes: %+v\n", classes)
+	}
+
+	userDump := apiResponse.Dump.Users[user]
+
+	var response DumpResponse
 	response.User = user
+	response.Request = requestString
+	response.Success = true
+	response.Message = "userdump"
+	response.Books = userDump.Books
+	response.Classes = classes
+	response.Password = userDump.Password
 	succeed(w, response.Message, &response)
 }
 
