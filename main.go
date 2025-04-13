@@ -67,6 +67,12 @@ type DumpResponse struct {
 	Password string
 }
 
+type RescanRequest struct {
+	Username   string
+	Folder     string
+	MessageIds []string
+}
+
 func MAB(w http.ResponseWriter) (*api.Controller, bool) {
 	api, err := api.NewAddressBookController()
 	if err != nil {
@@ -106,14 +112,17 @@ func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
 		fail(w, "system", "client certificate check", "missing client cert DN", http.StatusBadRequest)
 		return false
 	}
+
 	if Verbose {
 		log.Printf("client cert dn: %s\n", usernameHeader[0])
 	}
-	if usernameHeader[0] != "CN=filterctl" {
-		fail(w, "system", "client certificate check", fmt.Sprintf("client cert (%s) != filterctl", usernameHeader[0]), http.StatusBadRequest)
-		return false
+
+	if usernameHeader[0] == "CN=filterctl" || usernameHeader[0] == "CN=mabctl" {
+		return true
 	}
-	return true
+
+	fail(w, "system", "client certificate check", fmt.Sprintf("client cert (%s) != filterctl", usernameHeader[0]), http.StatusBadRequest)
+	return false
 }
 
 func logConfig(w http.ResponseWriter, config *classes.SpamClasses, label, user, request string) error {
@@ -170,6 +179,15 @@ func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address, re
 	succeed(w, response.Message, &response)
 }
 
+func GetClass(address string, score float32) (string, error) {
+	config, err := classes.New(configFile)
+	if err != nil {
+		return "", err
+	}
+	class := config.GetClass([]string{address}, float32(score))
+	return class, nil
+}
+
 func handleGetClass(w http.ResponseWriter, r *http.Request) {
 	if !checkClientCert(w, r) {
 		return
@@ -185,6 +203,7 @@ func handleGetClass(w http.ResponseWriter, r *http.Request) {
 		fail(w, address, requestString, "score conversion failed", http.StatusBadRequest)
 		return
 	}
+
 	config, ok := readConfig(w, address, requestString)
 	if ok {
 		var response ClassResponse
@@ -702,6 +721,44 @@ func handlePasswordRequest(w http.ResponseWriter, r *http.Request) {
 	succeed(w, response.Message, &response)
 }
 
+// /INBOX		    Maildir/cur
+// /INBOX/filterctl	    Maildir/.INBOX.filterctl/cur
+// /blogs/electronics   Maildir/.blogs.electronics/cur
+
+func handlePostRescan(w http.ResponseWriter, r *http.Request) {
+	if !checkClientCert(w, r) {
+		return
+	}
+	var request RescanRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+	requestString := fmt.Sprintf("rescan messages user %s", request.Username)
+
+	if Verbose {
+		log.Printf("Rescan: folder=%s messageIds=%v\n", request.Folder, request.MessageIds)
+	}
+
+	count, err := Rescan(request.Username, request.Folder, request.MessageIds)
+
+	response := api.Response{
+		Success: true,
+		User:    request.Username,
+		Request: requestString,
+		Message: fmt.Sprintf("messages rescanned: %d", count),
+	}
+
+	if Verbose {
+		log.Printf("response: %v\n", response)
+	}
+
+	succeed(w, response.Message, &response)
+	return
+
+}
+
 func runServer(addr *string, port *int) {
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
@@ -715,7 +772,7 @@ func runServer(addr *string, port *int) {
 	http.HandleFunc("PUT /filterctl/classes/{address}/{name}/{threshold}/", handlePutClassThreshold)
 	http.HandleFunc("DELETE /filterctl/classes/{address}/", handleDeleteUser)
 	http.HandleFunc("DELETE /filterctl/classes/{address}/{name}/", handleDeleteClass)
-
+	http.HandleFunc("POST /filterctl/rescan/", handlePostRescan)
 	http.HandleFunc("GET /filterctl/books/{user}/", handleListBooks)
 	http.HandleFunc("GET /filterctl/passwd/{user}/", handlePasswordRequest)
 	http.HandleFunc("GET /filterctl/addresses/{user}/{book}/", handleListAddresses)
