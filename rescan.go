@@ -13,8 +13,9 @@ import (
 	"os"
 	"path"
 	"regexp"
-	//"sort"
+	"sort"
 	"strings"
+	"sync"
 )
 
 // RFC says 76; but we append a ] after breaking X-Spam-Score
@@ -156,8 +157,9 @@ func getMessageId(pathname string) (string, error) {
 	return mid, nil
 }
 
-func Rescan(userAddress, folder string, messageIds []string) (int, error) {
-	var count int
+func Rescan(userAddress, folder string, messageIds []string) (int, int, error) {
+	var successCount int
+	var failCount int
 
 	if viper.GetBool("verbose") {
 		log.Printf("Rescan: folder=%s\n", folder)
@@ -168,29 +170,64 @@ func Rescan(userAddress, folder string, messageIds []string) (int, error) {
 
 	username, _, found := strings.Cut(userAddress, "@")
 	if !found {
-		return 0, fmt.Errorf("failed parsing userAddress: %s", userAddress)
+		return 0, 0, fmt.Errorf("failed parsing userAddress: %s", userAddress)
 	}
 
 	path := transformPath(username, folder)
 
 	messageFiles, err := scanMessageFiles(path, messageIds)
 	if err != nil {
-		return 0, fmt.Errorf("failed scanning message files")
+		return 0, 0, fmt.Errorf("failed scanning message files")
 	}
 
 	client, err := NewAPIClient()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
+	var wg sync.WaitGroup
+	errorChan := make(chan error)
+	successChan := make(chan string)
+
 	for _, messageFile := range messageFiles {
-		err := RescanMessage(client, userAddress, messageFile)
-		if err != nil {
-			return 0, err
-		}
-		count += 1
+		wg.Add(1)
+		go func(client *APIClient, userAddress string, messageFile MessageFile) {
+			defer wg.Done()
+			err := RescanMessage(client, userAddress, messageFile)
+			if err != nil {
+				errorChan <- err
+			}
+			successChan <- messageFile.Pathname
+		}(client, userAddress, messageFile)
 	}
-	return count, nil
+
+	go func() {
+		wg.Wait()
+		close(successChan)
+		close(errorChan)
+	}()
+
+	openChannels := 2
+	for openChannels > 0 {
+		select {
+		case err, ok := <-errorChan:
+			if ok {
+				failCount++
+				fmt.Fprintf(os.Stderr, "Rescan failed: %v", err)
+			} else {
+				openChannels--
+			}
+		case msgFile, ok := <-successChan:
+			if ok {
+				successCount++
+				log.Printf("Rescanned: %s\n", msgFile)
+			} else {
+				openChannels--
+			}
+		}
+	}
+	log.Printf("Rescan complete: success=%d, fail=%d\n", successCount, failCount)
+	return successCount, failCount, nil
 }
 
 func RescanMessage(client *APIClient, userAddress string, messageFile MessageFile) error {
@@ -198,250 +235,254 @@ func RescanMessage(client *APIClient, userAddress string, messageFile MessageFil
 	content, err := os.ReadFile(messageFile.Pathname)
 	lines := strings.Split(string(content), "\n")
 
-	/*
-	protoHeader, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(content)))
-	keys := getKeys(&protoHeader)
-	if err != nil {
-		return err
-	}
-	log.Printf("keys: %v\n", keys)
-	*/
-
-	fromAddr, err := parseHeaderAddr(protoHeader, "From")
-		if err != nil {
-			return err
-		}
-		rcptToAddr, err := parseHeaderAddr(protoHeader, "To")
-		if err != nil {
-			return err
-		}
-		deliveredToAddr, err := parseHeaderAddr(protoHeader, "Delivered-To")
-		if err != nil {
-			return err
-		}
-
-		senderIP, err := getSenderIP(protoHeader)
-		if err != nil {
-			return err
-		}
-
-	
-	var response RspamdResponse
-	err = requestRescan(fromAddr, rcptToAddr, deliveredToAddr, senderIp, &content, &response)
-
-	outputPath, err := generateOutputPath(&messageFile)
-	if err != nil {
-	    return err
-	}
-
-	outfile, err := os.Create(pathname)
-	if err != nil {
-		return fmt.Errorf("failed opening output file: %v", err)
-	}
-	defer outfile.Close()
-
-
-	var writer *mail.Writer
-
-	reader, err := mail.CreateReader(bytes.NewReader(content))
-	for {
-	    part, err := reader.NextPart()
-	    if err==io.EOF{
-		break
-	    } else if err != nil {
-		return fmt.Errorf("NextPart failed: %v", err)
-	    }
-	    switch header := part.Header.(type) {
-		case *mail.InlineHeader:
-		    err := mungeHeaders(&header, &content)
-		    if err != nil {
-			return err
-		    }
-		    writer, err = CreateWriter(outfile, header)
-		    if err != nil {
-			return fmt.Errorf("CreateWriter failed: %v", err)
-		    }
-		    inlineWriter, err := writer.CreateInline()
-		    if err != nil {
-			return fmt.Errorf("CreateInline failed: %v", err)
-		    }
-		    
-
-
-	    }
-	}
-
-	log.Printf("parts: %+v\n", parts)
-
-	return nil
- }
-
-	    
- func mungeHeaders(header *mail.Header, keys []string, content *[]byte) error {
-
-	/*
 	if viper.GetBool("verbose") {
-		log.Println("---BEGIN RAW HEADERS---")
+		log.Println("---BEGIN SRC HEADERS---")
 		for _, line := range lines {
 			log.Println(line)
 			if len(strings.TrimSpace(line)) == 0 {
 				break
 			}
 		}
-		log.Println("---END RAW HEADERS---")
-
-		log.Println("---BEGIN PARSED HEADERS---")
-		fields := header.Fields()
-		for fields.Next() {
-			log.Printf("%s: %s\n", fields.Key(), fields.Value())
-		}
-		log.Println("---END PARSED HEADERS---")
+		log.Println("---END SRC HEADERS---")
 	}
-	*/
 
-func requestRescan(fromAddr, rcptToAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
+	headers, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(content)))
+	keys := getKeys(&headers)
+	if err != nil {
+		return err
+	}
 
-		requestHeaders := map[string]string{
-			"settings":   `{"symbols_disabled": ["DATE_IN_PAST"]}`,
-			"IP":         senderIP,
-			"From":       fromAddr,
-			"Rcpt":       rcptToAddr,
-			"Deliver-To": deliveredToAddr,
-			"Hostname":   viper.GetString("hostname"),
+	fromAddr, err := parseHeaderAddr(&headers, "From")
+	if err != nil {
+		return err
+	}
+	rcptToAddr, err := parseHeaderAddr(&headers, "To")
+	if err != nil {
+		return err
+	}
+	deliveredToAddr, err := parseHeaderAddr(&headers, "Delivered-To")
+	if err != nil {
+		return err
+	}
+
+	senderIP, err := getSenderIP(&headers)
+	if err != nil {
+		return err
+	}
+
+	var response RspamdResponse
+	err = requestRescan(client, fromAddr, rcptToAddr, deliveredToAddr, senderIP, &content, &response)
+	if err != nil {
+		return err
+	}
+
+	err = mungeHeaders(client, &headers, userAddress, fromAddr, senderIP, &response, &keys)
+	if err != nil {
+		return err
+	}
+
+	if viper.GetBool("verbose") {
+		log.Println("---BEGIN CHANGED HEADERS---")
+		fields := headers.Fields()
+		for fields.Next() {
+			data, err := fields.Raw()
+			if err != nil {
+				fmt.Errorf("Raw failed: %v", err)
+			}
+			log.Printf("%s", string(data))
+			/*
+				log.Printf("--- BEGIN %s ---\n", fields.Key())
+				log.Printf("\n%s", HexDump(data))
+				log.Printf("%s: %s\n", fields.Key(), fields.Value())
+				log.Println("*****")
+				log.Printf("%s", string(data))
+				log.Println("*****")
+				log.Printf("--- END %s ---\n", fields.Key())
+			*/
 		}
+		log.Println("---END CHANGED HEADERS---")
+	}
 
-		_, err = client.Post("/rspamc/checkv2", content, response, &requestHeaders)
+	outputPath, err := generateOutputPath(&messageFile)
+	if err != nil {
+		return err
+	}
+
+	outfile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed opening output file: %v", err)
+	}
+	defer outfile.Close()
+
+	fields := headers.Fields()
+	for fields.Next() {
+		data, err := fields.Raw()
 		if err != nil {
-			return err
+			fmt.Errorf("failed reading Raw header: %v", err)
 		}
-
-		if viper.GetBool("verbose") {
-
-			//log.Printf("---BEGIN RESPONSE---\n%s\n---END RESPONSE---\n\n", text)
-			//log.Printf("%+v\n", response)
-
-			for name := range response.Milter.RemoveHeaders {
-				log.Printf("remove: %s\n", name)
-			}
-
-			for name, header := range response.Milter.AddHeaders {
-				if name != "X-Spamd-Result" && name != "X-Spam-Status" {
-					log.Printf("add: %s %s\n", name, header.Value)
-				}
+		_, err = fmt.Fprintf(outfile, "%s", string(data))
+		if err != nil {
+			fmt.Errorf("failed writing header line: %v", err)
+		}
+	}
+	inHeaders := true
+	for _, line := range lines {
+		if inHeaders {
+			if len(strings.TrimSpace(line)) == 0 {
+				inHeaders = false
+			} else {
+				continue
 			}
 		}
-	    return nil
+		_, err := fmt.Fprintf(outfile, "%s\n", line)
+		if err != nil {
+			fmt.Errorf("failed writing body line: %v", err)
+		}
+	}
+
+	return nil
 }
 
+func requestRescan(client *APIClient, fromAddr, rcptToAddr, deliveredToAddr, senderIP string, content *[]byte, response *RspamdResponse) error {
 
-func mungeHeaders(response *RspamdResponse, senderIP string, keys []string, headers *mail.Header) error {
-		// delete the headers RSPAMD wants to delete
-		deleteKeys := []string{}
-		for removeKey, _ := range response.Milter.RemoveHeaders {
-			for headerKey, _ := range message.Header {
-				if strings.ToLower(removeKey) == strings.ToLower(headerKey) {
-					deleteKeys = append(deleteKeys, headerKey)
-				}
+	requestHeaders := map[string]string{
+		"settings":   `{"symbols_disabled": ["DATE_IN_PAST"]}`,
+		"IP":         senderIP,
+		"From":       fromAddr,
+		"Rcpt":       rcptToAddr,
+		"Deliver-To": deliveredToAddr,
+		"Hostname":   viper.GetString("hostname"),
+	}
+
+	_, err := client.Post("/rspamc/checkv2", content, response, &requestHeaders)
+	if err != nil {
+		return err
+	}
+
+	if viper.GetBool("verbose") {
+
+		//log.Printf("---BEGIN RESPONSE---\n%s\n---END RESPONSE---\n\n", text)
+		//log.Printf("%+v\n", response)
+
+		for name := range response.Milter.RemoveHeaders {
+			log.Printf("remove: %s\n", name)
+		}
+
+		for name, _ := range response.Milter.AddHeaders {
+			log.Printf("add: %s\n", name)
+		}
+	}
+	return nil
+}
+
+func mungeHeaders(client *APIClient, headers *textproto.Header, userAddress, fromAddr, senderIP string, response *RspamdResponse, keys *[]string) error {
+
+	// delete headers RSPAM wants to delete
+	for key, _ := range response.Milter.RemoveHeaders {
+		headers.Del(key)
+	}
+
+	// delete more headers
+	for _, key := range *keys {
+		if strings.HasPrefix(strings.ToLower(key), "x-spam") {
+			headers.Del(key)
+		}
+		if strings.HasPrefix(strings.ToLower(key), "x-rspam") {
+			headers.Del(key)
+		}
+	}
+
+	skipAddKeys := map[string]bool{
+		"X-Rspamd-Pre-Result": true,
+		"X-Rspamd-Action":     true,
+		"X-Spamd-Bar":         true,
+		"X-Spamd-Result":      true,
+		"X-Spam-Status":       true,
+	}
+	// copy the headers RSPAMD wants to add
+	for key, value := range response.Milter.AddHeaders {
+		if !skipAddKeys[key] {
+			if viper.GetBool("verbose") {
+				log.Printf("Adding: '%s': '%s'\n", key, value.Value)
+			}
+			if strings.ContainsRune(value.Value, '\n') {
+				v := strings.ReplaceAll(value.Value, "\n", "\r\n")
+				headers.Del(key)
+				headers.AddRaw([]byte(key + ": " + v + "\r\n"))
+			} else {
+				headers.Set(strings.TrimSpace(key), strings.TrimSpace(value.Value))
 			}
 		}
+	}
 
-		for headerKey, _ := range message.Header {
-			log.Printf("headerKey: %s\n", headerKey)
-			log.Printf(`strings.ToLower(headerKey): %v\n`, strings.ToLower(headerKey))
-			log.Printf(`strings.HasPrefix(strings.ToLower(headerKey), "x-spam"): %v\n`, strings.HasPrefix(strings.ToLower(headerKey), "x-spam"))
-			if strings.HasPrefix(strings.ToLower(headerKey), "x-spam") {
-				deleteKeys = append(deleteKeys, headerKey)
-			}
-			if strings.HasPrefix(strings.ToLower(headerKey), "x-rspam") {
-				deleteKeys = append(deleteKeys, headerKey)
-			}
-		}
-		for _, key := range deleteKeys {
-			log.Printf("deleting: %s\n", key)
-			header.
-			delete(message.Header, key)
-		}
+	symbols := []Symbol{}
+	for _, symbol := range response.Symbols {
+		symbols = append(symbols, symbol)
+	}
 
-		skipAddKeys := map[string]bool{
-			"X-Rspamd-Pre-Result": true,
-			"X-Rspamd-Action":     true,
-			"X-Spamd-Bar":         true,
-			"X-Spamd-Result":      true,
-		}
-		// copy the headers RSPAMD wants to add
-		for key, header := range response.Milter.AddHeaders {
-			if !skipAddKeys[key] {
-				message.Header[key] = []string{header.Value}
-			}
-		}
+	sort.Slice(symbols, func(i, j int) bool {
+		return symbols[i].Name < symbols[j].Name
+	})
 
-		symbols := []Symbol{}
-		for _, symbol := range response.Symbols {
-			symbols = append(symbols, symbol)
+	// generate new X-Spam-Status header
+	spamStatus := fmt.Sprintf("%s required=%.3f\r\n", response.Milter.AddHeaders["X-Spam-Status"].Value, response.Required)
+	delim := "\ttests["
+	line := ""
+	for _, symbol := range symbols {
+		chunk := fmt.Sprintf("%s=%.3f", symbol.Name, symbol.Score)
+		if len(line)+len(delim)+len(chunk) >= MAX_HEADER_LENGTH {
+			spamStatus += line
+			line = ""
+			delim = "\r\n\t"
 		}
+		line += delim + chunk
+		delim = ", "
+	}
+	if line != "" {
+		spamStatus += delim + line
+	}
+	spamStatus += "]\r\n"
+	headers.Del("X-Spam-Status")
+	//headers.Set("X-Spam-Status", spamStatus)
+	headers.AddRaw([]byte("X-Spam-Status: " + spamStatus))
 
-		sort.Slice(symbols, func(i, j int) bool {
-			return symbols[i].Name < symbols[j].Name
-		})
+	headers.Set("X-Spam-Score", fmt.Sprintf("%.3f / %.3f", response.Score, response.Required))
 
-		// generate new X-Spam-Status header
-		spamStatus := fmt.Sprintf("%s required=%.3f\n    tests[", message.Header.Get("X-Spam-Status"), response.Required)
-		delim := ""
-		for _, symbol := range symbols {
-			spamStatus += fmt.Sprintf("%s%s=%.3f", delim, symbol.Name, symbol.Score)
-			delim = ", "
-		}
-		spamStatus += "]"
-		message.Header["X-Spam-Status"] = []string{spamStatus}
+	senderScore, err := getSenderScore(senderIP)
+	if err != nil {
+		return err
+	}
+	headers.Set("X-SenderScore", fmt.Sprintf("%d", senderScore))
 
-		message.Header["X-Spam-Score"] = []string{fmt.Sprintf("%.3f / %.3f", response.Score, response.Required)}
+	books, err := client.ScanAddressBooks(userAddress, fromAddr)
+	if err != nil {
+		return err
+	}
+	for _, book := range books {
+		headers.Add("X-Address-Book", book)
+	}
 
-		senderScore, err := getSenderScore(senderIP)
-		if err != nil {
-			return err
-		}
-		message.Header["X-SenderScore"] = []string{fmt.Sprintf("%d", senderScore)}
+	//class, err := getSpamClass(client, userAddress, response.Score)
+	class, err := client.ScanSpamClass(userAddress, response.Score)
+	if err != nil {
+		return err
+	}
+	headers.Set("X-Spam-Class", class)
 
-		//books, err := getBooks(client, userAddress, &lines)
-		books, err := client.ScanAddressBooks(userAddress, fromAddr)
-		if err != nil {
-			return err
-		}
-		if len(books) > 0 {
-			message.Header["X-Address-Book"] = books
-		}
+	var spamValue string
+	if class == "spam" {
+		spamValue = "yes"
+	} else {
+		spamValue = "no"
+	}
+	headers.Set("X-Spam", spamValue)
 
-		//class, err := getSpamClass(client, userAddress, response.Score)
-		class, err := client.ScanSpamClass(userAddress, response.Score)
-		if err != nil {
-			return err
-		}
-		message.Header["X-Spam-Class"] = []string{class}
+	*keys = []string{}
+	fields := headers.Fields()
+	for fields.Next() {
+		*keys = append(*keys, fields.Key())
+	}
 
-		var spamValue string
-		if class == "spam" {
-			spamValue = "yes"
-		} else {
-			spamValue = "no"
-		}
-		message.Header["X-Spam"] = []string{spamValue}
-
-
-		if viper.GetBool("verbose") {
-			log.Println("---BEGIN CHANGED HEADERS---")
-			for key, values := range message.Header {
-				for _, value := range values {
-					log.Printf("%s: %s\n", key, value)
-				}
-			}
-			log.Println("---END CHANGED HEADERS---")
-		}
-
-		err = writeMessage(outputPath, message)
-		if err != nil {
-			return err
-		}
-	*/
 	return nil
 }
 
@@ -453,7 +494,6 @@ func getKeys(header *textproto.Header) []string {
 	}
 	return keys
 }
-
 
 func parseHeaderAddr(header *textproto.Header, key string) (string, error) {
 	value := header.Get(key)

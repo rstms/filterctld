@@ -728,7 +728,7 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Rescan: folder=%s messageIds=%v\n", request.Folder, request.MessageIds)
 	}
 
-	count, err := Rescan(request.Username, request.Folder, request.MessageIds)
+	successes, fails, err := Rescan(request.Username, request.Folder, request.MessageIds)
 	if err != nil {
 		fail(w, request.Username, requestString, fmt.Sprintf("Rescan failed: %v", err), http.StatusInternalServerError)
 		return
@@ -738,7 +738,7 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		User:    request.Username,
 		Request: requestString,
-		Message: fmt.Sprintf("rescanned: %d", count),
+		Message: fmt.Sprintf("rescanned=%d failed=%d", successes, fails),
 	}
 
 	if Verbose {
