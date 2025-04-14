@@ -32,6 +32,9 @@ install: build
 test: fmt
 	go test -v . ./...
 
+debug: fmt
+	go test -v -failfast -run RescanOne . ./...
+
 release:
 	@$(gitclean) || { [ -n "$(dirty)" ] && echo "allowing dirty release"; }
 	@$(if $(update),gh release delete -y v$(version),)

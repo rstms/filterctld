@@ -179,15 +179,6 @@ func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address, re
 	succeed(w, response.Message, &response)
 }
 
-func GetClass(address string, score float32) (string, error) {
-	config, err := classes.New(configFile)
-	if err != nil {
-		return "", err
-	}
-	class := config.GetClass([]string{address}, float32(score))
-	return class, nil
-}
-
 func handleGetClass(w http.ResponseWriter, r *http.Request) {
 	if !checkClientCert(w, r) {
 		return
@@ -721,10 +712,6 @@ func handlePasswordRequest(w http.ResponseWriter, r *http.Request) {
 	succeed(w, response.Message, &response)
 }
 
-// /INBOX		    Maildir/cur
-// /INBOX/filterctl	    Maildir/.INBOX.filterctl/cur
-// /blogs/electronics   Maildir/.blogs.electronics/cur
-
 func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 	if !checkClientCert(w, r) {
 		return
@@ -735,19 +722,23 @@ func handlePostRescan(w http.ResponseWriter, r *http.Request) {
 		fail(w, "system", "rescan", fmt.Sprintf("failed decoding request: %v", err), http.StatusBadRequest)
 		return
 	}
-	requestString := fmt.Sprintf("rescan messages user %s", request.Username)
+	requestString := fmt.Sprintf("rescan: %+v", request)
 
 	if Verbose {
 		log.Printf("Rescan: folder=%s messageIds=%v\n", request.Folder, request.MessageIds)
 	}
 
 	count, err := Rescan(request.Username, request.Folder, request.MessageIds)
+	if err != nil {
+		fail(w, request.Username, requestString, fmt.Sprintf("Rescan failed: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	response := api.Response{
 		Success: true,
 		User:    request.Username,
 		Request: requestString,
-		Message: fmt.Sprintf("messages rescanned: %d", count),
+		Message: fmt.Sprintf("rescanned: %d", count),
 	}
 
 	if Verbose {
@@ -871,6 +862,7 @@ func main() {
 		log.Printf("WARNING: client certificate validation disabled\n")
 	}
 	viper.SetConfigFile("/etc/mabctl/config.yaml")
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		log.Fatalf("Error reading /etc/mabctl/config: %v", err)
@@ -880,6 +872,12 @@ func main() {
 		log.Printf("classes config: %s\n", configFile)
 		log.Printf("viper config: %s\n", viper.ConfigFileUsed())
 	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("failed reading my hostname: %v", err)
+	}
+	viper.SetDefault("hostname", hostname)
 
 	if !*debugFlag {
 		daemonize(logFileFlag, addr, port)
