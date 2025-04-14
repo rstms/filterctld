@@ -3,6 +3,7 @@ module github.com/rstms/filterctld
 go 1.22.1
 
 require (
+	github.com/emersion/go-message v0.18.2
 	github.com/rstms/mabctl v1.5.8
 	github.com/rstms/rspamd-classes v1.0.2
 	github.com/sevlyar/go-daemon v0.1.6
