@@ -3,7 +3,7 @@ module github.com/rstms/filterctld
 go 1.22.1
 
 require (
-	github.com/rstms/mabctl v1.5.12
+	github.com/rstms/mabctl v1.5.13
 	github.com/rstms/rspamd-classes v1.0.2
 	github.com/sevlyar/go-daemon v0.1.6
 	github.com/spf13/viper v1.19.0
