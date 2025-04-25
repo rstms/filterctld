@@ -736,7 +736,7 @@ func runServer(addr *string, port *int) {
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	server := http.Server{
 		Addr:        listen,
-		IdleTimeout: 5,
+		IdleTimeout: 5 * time.Second,
 	}
 
 	http.HandleFunc("GET /filterctl/classes/{address}/", handleGetClasses)
