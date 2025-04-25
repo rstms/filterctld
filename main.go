@@ -735,7 +735,7 @@ func runServer(addr *string, port *int) {
 
 	listen := fmt.Sprintf("%s:%d", *addr, *port)
 	server := http.Server{
-		Addr: listen,
+		Addr:        listen,
 		IdleTimeout: 5,
 	}
 
