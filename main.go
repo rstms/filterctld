@@ -9,6 +9,7 @@ import (
 	"github.com/rstms/rspamd-classes/classes"
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/viper"
+	"golang.org/x/sys/unix"
 	"log"
 	"net/http"
 	"os"
@@ -835,14 +836,20 @@ func main() {
 		}
 	}
 
-	log.Printf("%s v%s rspamd_classes=v%s mabctl_api=v%s, uid=%d gid=%d started as PID %d\n", serverName, Version, classes.Version, api.Version, os.Getuid(), os.Getgid(), os.Getpid())
+	var rLimit unix.Rlimit
+	err := unix.Getrlimit(unix.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		log.Fatalf("failed getting resource limits: %v", err)
+	}
+
+	log.Printf("%s v%s rspamd_classes=v%s mabctl_api=v%s, uid=%d gid=%d rlimit.files=%v started as PID %d\n", serverName, Version, classes.Version, api.Version, os.Getuid(), os.Getgid(), rLimit, os.Getpid())
 
 	if InsecureSkipClientCertificateValidation {
 		log.Printf("WARNING: client certificate validation disabled\n")
 	}
 	viper.SetConfigFile("/etc/mabctl/config.yaml")
 
-	err := viper.ReadInConfig()
+	err = viper.ReadInConfig()
 	if err != nil {
 		log.Fatalf("Error reading /etc/mabctl/config: %v", err)
 	}
