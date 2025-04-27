@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -29,6 +30,7 @@ const Version = "1.1.10"
 var Verbose bool
 var Debug bool
 var InsecureSkipClientCertificateValidation bool
+var mabLock sync.Mutex
 
 var configFile string
 
@@ -75,6 +77,8 @@ type RescanRequest struct {
 }
 
 func MAB(w http.ResponseWriter) (*api.Controller, bool) {
+	mabLock.Lock()
+	defer mabLock.Unlock()
 	api, err := api.NewAddressBookController()
 	if err != nil {
 		fail(w, "system", "address book controller", fmt.Sprintf("api init failed: %v", err), http.StatusInternalServerError)
