@@ -756,7 +756,7 @@ func runServer(addr *string, port *int) {
 	http.HandleFunc("POST /filterctl/book/", handleAddBook)
 	http.HandleFunc("POST /filterctl/address/", handleAddAddress)
 	http.HandleFunc("POST /filterctl/user/", handleAddUser)
-	http.HandleFunc("POST /filterctl/accounts/", handleGetAccounts)
+	http.HandleFunc("GET /filterctl/accounts/", handleGetAccounts)
 	http.HandleFunc("POST /filterctl/restore/", handlePostRestore)
 	http.HandleFunc("GET /filterctl/dump/{user}/", handleGetUserDump)
 	http.HandleFunc("DELETE /filterctl/book/{user}/{book}/", handleDeleteBook)
