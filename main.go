@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -74,6 +75,19 @@ type RescanRequest struct {
 	Username   string
 	Folder     string
 	MessageIds []string
+}
+
+type CreateBookRequest struct {
+	Username    string
+	Bookname    string
+	Description string
+}
+
+type AddAddressRequest struct {
+	Username string
+	Bookname string
+	Address  string
+	Name     string
 }
 
 func MAB(w http.ResponseWriter) (*api.Controller, bool) {
@@ -347,6 +361,7 @@ func handleListBooks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
 	response, err := mab.GetBooks(user)
 	if err != nil {
 		fail(w, user, requestString, fmt.Sprintf("api GetBooks failed: %v", err), http.StatusInternalServerError)
@@ -439,11 +454,6 @@ func handleAddBook(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	if !checkClientCert(w, r) {
 		return
-	}
-	type CreateBookRequest struct {
-		Username    string
-		Bookname    string
-		Description string
 	}
 	var request CreateBookRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -583,12 +593,6 @@ func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 	if !checkClientCert(w, r) {
 		return
 	}
-	type AddAddressRequest struct {
-		Username string
-		Bookname string
-		Address  string
-		Name     string
-	}
 	var request AddAddressRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
@@ -603,6 +607,42 @@ func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
+	deletedFrom := ""
+	if viper.GetBool("unique_book_addresses") {
+		bookNames := make(map[string]bool)
+		// remove address from other books
+		response, err := mab.Dump(request.Username)
+		if err != nil {
+			fail(w, request.Username, requestString, fmt.Sprintf("api.Dump failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		dump := response.Dump.Users[request.Username]
+		for bookName, addresses := range dump.Books {
+			if bookName != request.Bookname {
+				for _, address := range addresses {
+
+					if address == request.Address {
+						log.Printf("Deleting duplicate: user='%s' book='%s' address='%s'\n", request.Username, bookName, address)
+
+						_, err := mab.DeleteAddress(request.Username, bookName, address)
+						if err != nil {
+							fail(w, request.Username, requestString, fmt.Sprintf("api.DeleteAddress failed: %v", err), http.StatusInternalServerError)
+						}
+						bookNames[bookName] = true
+					}
+				}
+			}
+		}
+		if len(bookNames) > 0 {
+			keys := make([]string, 0, len(bookNames))
+			for key := range bookNames {
+				keys = append(keys, key)
+			}
+			deletedFrom = fmt.Sprintf(" (deleted from %s)", strings.Join(keys, ","))
+		}
+	}
+
 	response, err := mab.AddAddress(nil, request.Username, request.Bookname, request.Address, request.Name)
 	if err != nil {
 		fail(w, request.Username, requestString, fmt.Sprintf("api.AddAddress failed: %v", err), http.StatusInternalServerError)
@@ -611,7 +651,8 @@ func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 	if Verbose {
 		log.Printf("response: %v\n", response)
 	}
-	succeed(w, response.Message, &api.Response{User: request.Username, Request: requestString, Message: response.Message, Success: true})
+	message := fmt.Sprintf("%s%s", response.Message, deletedFrom)
+	succeed(w, response.Message, &api.Response{User: request.Username, Request: requestString, Message: message, Success: true})
 	return
 }
 
@@ -798,6 +839,15 @@ func reloadHandler(sig os.Signal) error {
 	return nil
 }
 
+func setViperDefaults() {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("failed reading my hostname: %v", err)
+	}
+	viper.SetDefault("hostname", hostname)
+	viper.SetDefault("unique_book_addresses", true)
+}
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1", "listen address")
 	port := flag.Int("port", defaultPort, "listen port")
@@ -864,11 +914,7 @@ func main() {
 		log.Printf("viper config: %s\n", viper.ConfigFileUsed())
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("failed reading my hostname: %v", err)
-	}
-	viper.SetDefault("hostname", hostname)
+	setViperDefaults()
 
 	if !*debugFlag {
 		daemonize(logFileFlag, addr, port)
