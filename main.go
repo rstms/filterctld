@@ -289,7 +289,7 @@ func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+func handleDeleteUserClasses(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	if !checkClientCert(w, r) {
 		return
@@ -747,7 +747,7 @@ func runServer(addr *string, port *int) {
 	http.HandleFunc("POST /filterctl/classes/", handlePostClasses)
 	http.HandleFunc("GET /filterctl/class/{address}/{score}/", handleGetClass)
 	http.HandleFunc("PUT /filterctl/classes/{address}/{name}/{threshold}/", handlePutClassThreshold)
-	http.HandleFunc("DELETE /filterctl/classes/{address}/", handleDeleteUser)
+	http.HandleFunc("DELETE /filterctl/classes/{address}/", handleDeleteUserClasses)
 	http.HandleFunc("DELETE /filterctl/classes/{address}/{name}/", handleDeleteClass)
 	http.HandleFunc("GET /filterctl/books/{user}/", handleListBooks)
 	http.HandleFunc("GET /filterctl/passwd/{user}/", handlePasswordRequest)
