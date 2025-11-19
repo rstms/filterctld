@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/rstms/mabctl/api"
 	"github.com/rstms/rspamd-classes/classes"
 	"github.com/sevlyar/go-daemon"
+	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"golang.org/x/sys/unix"
 	"log"
@@ -858,11 +858,21 @@ func main() {
 	logFileFlag := flag.String("logfile", defaultLogFile, "log file full pathname")
 	versionFlag := flag.Bool("version", false, "output version")
 	insecureFlag := flag.Bool("insecure", false, "skip client certificate validation")
+	helpFlag := flag.Bool("help", false, "show help")
 
 	flag.Parse()
 
+	if *helpFlag {
+		flag.Usage()
+		os.Exit(0)
+	}
+
 	if *versionFlag {
-		fmt.Printf("%s v%s (api v%s)\n", os.Args[0], Version, api.Version)
+		version := fmt.Sprintf("filterctld version %s", Version)
+		if *verboseFlag {
+			version += fmt.Sprintf(" (api v%s)", api.Version)
+		}
+		fmt.Println(version)
 		os.Exit(0)
 	}
 

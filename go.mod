@@ -1,6 +1,6 @@
 module github.com/rstms/filterctld
 
-go 1.22.1
+go 1.25.4
 
 require (
 	github.com/rstms/mabctl v1.5.17
