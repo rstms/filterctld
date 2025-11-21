@@ -1,2 +1,2 @@
 # filterctld
-mail filter control API server
+rstms mailserver mail filter control API backend server
