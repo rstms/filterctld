@@ -101,6 +101,11 @@ func MAB(w http.ResponseWriter) (*api.Controller, bool) {
 	return api, true
 }
 
+func systemFail(w http.ResponseWriter, endpoint, message string, status int) {
+	log.Printf("  [%d] %s: %s", status, endpoint, message)
+	w.WriteHeader(status)
+}
+
 func fail(w http.ResponseWriter, user, request, message string, status int) {
 	log.Printf("  [%d] %s", status, message)
 	w.WriteHeader(status)
@@ -114,7 +119,7 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 		dump, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 
-			log.Fatalln("failure marshalling response:", err)
+			log.Fatalln("failure formatting response:", err)
 		}
 		log.Println(string(dump))
 	}
@@ -122,13 +127,13 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
+func checkClientCert(w http.ResponseWriter, r *http.Request, endpoint string) bool {
 	if InsecureSkipClientCertificateValidation {
 		return true
 	}
 	certHeader, ok := r.Header["X-Client-Cert-Dn"]
 	if !ok {
-		fail(w, "system", "client certificate check", "missing client cert DN", http.StatusBadRequest)
+		systemFail(w, endpoint, "missing client certificate header", http.StatusUnauthorized)
 		return false
 	}
 
@@ -137,7 +142,7 @@ func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	if len(certHeader) != 1 {
-		fail(w, "system", "client certificate check", fmt.Sprintf("unexpected multiple cert header values: %d", len(certHeader)), http.StatusBadRequest)
+		systemFail(w, endpoint, fmt.Sprintf("unexpected multiple cert header values: %d\n", len(certHeader)), http.StatusBadRequest)
 		return false
 	}
 
@@ -146,7 +151,26 @@ func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
 	case "CN=mabctl":
 	case "CN=filterbooks":
 	default:
-		fail(w, "system", "client certificate check", fmt.Sprintf("client cert (%s) != filterctl", certHeader[0]), http.StatusBadRequest)
+		systemFail(w, endpoint, fmt.Sprintf("client cert (%s) != filterctl\n", certHeader[0]), http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
+func checkApiKey(w http.ResponseWriter, r *http.Request, endpoint string) bool {
+	apiKeyHeader, ok := r.Header["X-Api-Key"]
+	if !ok {
+		systemFail(w, endpoint, "missing X-Api-Key header", http.StatusBadRequest)
+		return false
+	}
+
+	if len(apiKeyHeader) != 1 {
+		systemFail(w, endpoint, fmt.Sprintf("unexpected multiple api key header values: %d", len(apiKeyHeader)), http.StatusBadRequest)
+		return false
+	}
+
+	if apiKeyHeader[0] != viper.GetString("api_key") {
+		systemFail(w, endpoint, "api key mismatch", http.StatusUnauthorized)
 		return false
 	}
 	return true
@@ -208,7 +232,7 @@ func sendClasses(w http.ResponseWriter, config *classes.SpamClasses, address, re
 
 func handleGetClass(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "get_class") {
 		return
 	}
 	address := r.PathValue("address")
@@ -237,7 +261,7 @@ func handleGetClass(w http.ResponseWriter, r *http.Request) {
 
 func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "get_classes") {
 		return
 	}
 	address := r.PathValue("address")
@@ -253,7 +277,7 @@ func handleGetClasses(w http.ResponseWriter, r *http.Request) {
 
 func handlePostClasses(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "post_classes") {
 		return
 	}
 	type PostClassesRequest struct {
@@ -286,7 +310,7 @@ func handlePostClasses(w http.ResponseWriter, r *http.Request) {
 
 func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "put_class_threshold") {
 		return
 	}
 	address := r.PathValue("address")
@@ -313,7 +337,7 @@ func handlePutClassThreshold(w http.ResponseWriter, r *http.Request) {
 
 func handleDeleteUserClasses(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "delete_user_classes") {
 		return
 	}
 	address := r.PathValue("address")
@@ -334,7 +358,7 @@ func handleDeleteUserClasses(w http.ResponseWriter, r *http.Request) {
 
 func handleDeleteClass(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "delete_class") {
 		return
 	}
 	address := r.PathValue("address")
@@ -356,7 +380,7 @@ func handleDeleteClass(w http.ResponseWriter, r *http.Request) {
 
 func handleListBooks(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "list_books") {
 		return
 	}
 	user := r.PathValue("user")
@@ -385,7 +409,7 @@ func handleListBooks(w http.ResponseWriter, r *http.Request) {
 
 func handleGetAccounts(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "get_accounts") {
 		return
 	}
 	requestString := "get accounts"
@@ -411,7 +435,7 @@ func handleGetAccounts(w http.ResponseWriter, r *http.Request) {
 
 func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "get_user_dump") {
 		return
 	}
 	user := r.PathValue("user")
@@ -460,7 +484,7 @@ func handleGetUserDump(w http.ResponseWriter, r *http.Request) {
 
 func handleAddBook(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "add_book") {
 		return
 	}
 	var request CreateBookRequest
@@ -492,7 +516,7 @@ func handleAddBook(w http.ResponseWriter, r *http.Request) {
 
 func handleAddUser(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "add_user") {
 		return
 	}
 	type CreateUserRequest struct {
@@ -529,7 +553,7 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) {
 
 func handlePostRestore(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "post_restore") {
 		return
 	}
 	type RestoreRequest struct {
@@ -572,7 +596,7 @@ func handlePostRestore(w http.ResponseWriter, r *http.Request) {
 
 func handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "delete_book") {
 		return
 	}
 	username := r.PathValue("user")
@@ -598,7 +622,7 @@ func handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 
 func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "add_address") {
 		return
 	}
 	var request AddAddressRequest
@@ -666,7 +690,7 @@ func handleAddAddress(w http.ResponseWriter, r *http.Request) {
 
 func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "delete_address") {
 		return
 	}
 	username := r.PathValue("user")
@@ -694,7 +718,7 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 
 func handleListAddresses(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "list_addresses") {
 		return
 	}
 	username := r.PathValue("user")
@@ -721,7 +745,7 @@ func handleListAddresses(w http.ResponseWriter, r *http.Request) {
 // return list of books containing address
 func handleScanAddress(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "scan_address") {
 		return
 	}
 	username := r.PathValue("user")
@@ -756,7 +780,7 @@ func handleScanAddress(w http.ResponseWriter, r *http.Request) {
 
 func handlePasswordRequest(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r) {
+	if !checkClientCert(w, r, "get_password") {
 		return
 	}
 	username := r.PathValue("user")
@@ -920,11 +944,11 @@ func main() {
 	if InsecureSkipClientCertificateValidation {
 		log.Printf("WARNING: client certificate validation disabled\n")
 	}
-	viper.SetConfigFile("/etc/mabctl/config.yaml")
+	viper.SetConfigFile("/etc/filterctld/config.yaml")
 
 	err = viper.ReadInConfig()
 	if err != nil {
-		log.Fatalf("Error reading /etc/mabctl/config: %v", err)
+		log.Fatalf("Error reading /etc/filterctld/config: %v", err)
 	}
 	if Verbose {
 		viper.Set("verbose", true)
