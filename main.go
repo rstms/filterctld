@@ -137,15 +137,15 @@ func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	if len(certHeader) != 1 {
-	    fail(w, "system", "client certificate check", fmt.Sprintf("unexpected multiple cert header values: %d", len(certHeader)), http.StatusBadRequest)
+		fail(w, "system", "client certificate check", fmt.Sprintf("unexpected multiple cert header values: %d", len(certHeader)), http.StatusBadRequest)
 		return false
 	}
 
 	switch certHeader[0] {
-	    case "CN=filterctl":
-	    case "CN=mabctl":
-	    case "CN=filterbooks":
-	    default:
+	case "CN=filterctl":
+	case "CN=mabctl":
+	case "CN=filterbooks":
+	default:
 		fail(w, "system", "client certificate check", fmt.Sprintf("client cert (%s) != filterctl", certHeader[0]), http.StatusBadRequest)
 		return false
 	}
@@ -857,7 +857,7 @@ func setViperDefaults() {
 }
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1", "listen address")
+	addr := "127.0.0.1"
 	port := flag.Int("port", defaultPort, "listen port")
 	debugFlag := flag.Bool("debug", false, "run in foreground mode")
 	initFlag := flag.Bool("init", false, "initialize config file and exit")
@@ -935,10 +935,10 @@ func main() {
 	setViperDefaults()
 
 	if !*debugFlag {
-		daemonize(logFileFlag, addr, port)
+		daemonize(logFileFlag, &addr, port)
 		os.Exit(0)
 	}
-	go runServer(addr, port)
+	go runServer(&addr, port)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM)
 	<-sigs
