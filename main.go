@@ -126,22 +126,30 @@ func checkClientCert(w http.ResponseWriter, r *http.Request) bool {
 	if InsecureSkipClientCertificateValidation {
 		return true
 	}
-	usernameHeader, ok := r.Header["X-Client-Cert-Dn"]
+	certHeader, ok := r.Header["X-Client-Cert-Dn"]
 	if !ok {
 		fail(w, "system", "client certificate check", "missing client cert DN", http.StatusBadRequest)
 		return false
 	}
 
 	if Verbose {
-		log.Printf("client cert dn: %s\n", usernameHeader[0])
+		log.Printf("client cert dn: %v\n", certHeader)
 	}
 
-	if usernameHeader[0] == "CN=filterctl" || usernameHeader[0] == "CN=mabctl" {
-		return true
+	if len(certHeader) != 1 {
+	    fail(w, "system", "client certificate check", fmt.Sprintf("unexpected multiple cert header values: %d", len(certHeader)), http.StatusBadRequest)
+		return false
 	}
 
-	fail(w, "system", "client certificate check", fmt.Sprintf("client cert (%s) != filterctl", usernameHeader[0]), http.StatusBadRequest)
-	return false
+	switch certHeader[0] {
+	    case "CN=filterctl":
+	    case "CN=mabctl":
+	    case "CN=filterbooks":
+	    default:
+		fail(w, "system", "client certificate check", fmt.Sprintf("client cert (%s) != filterctl", certHeader[0]), http.StatusBadRequest)
+		return false
+	}
+	return true
 }
 
 func logConfig(w http.ResponseWriter, config *classes.SpamClasses, label, user, request string) error {
