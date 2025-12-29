@@ -129,6 +129,10 @@ func succeed(w http.ResponseWriter, message string, result interface{}) {
 
 func checkClientCert(w http.ResponseWriter, r *http.Request, endpoint string) bool {
 	if InsecureSkipClientCertificateValidation {
+		log.Printf(
+			"InsecureSkipClientCertificateValidation: %v; not checking client cert",
+			InsecureSkipClientCertificateValidation,
+		)
 		return true
 	}
 	certHeader, ok := r.Header["X-Client-Cert-Dn"]
