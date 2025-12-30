@@ -753,9 +753,7 @@ func handleListAddresses(w http.ResponseWriter, r *http.Request) {
 // return list of books containing address
 func handleScanAddress(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	if !checkClientCert(w, r, "scan_address") {
-		return
-	}
+	// no client cert check for this endpoint
 	username := r.PathValue("user")
 	address := r.PathValue("address")
 	requestString := fmt.Sprintf("scan books for %s", address)
