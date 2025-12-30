@@ -146,7 +146,7 @@ func checkClientCert(w http.ResponseWriter, r *http.Request, endpoint string) bo
 	}
 
 	if len(certHeader) != 1 {
-		systemFail(w, endpoint, fmt.Sprintf("unexpected multiple cert header values: %d\n", len(certHeader)), http.StatusBadRequest)
+		systemFail(w, endpoint, fmt.Sprintf("unexpected multiple cert header values: %v", certHeader), http.StatusBadRequest)
 		return false
 	}
 
@@ -155,7 +155,11 @@ func checkClientCert(w http.ResponseWriter, r *http.Request, endpoint string) bo
 	case "CN=mabctl":
 	case "CN=filterbooks":
 	default:
-		systemFail(w, endpoint, fmt.Sprintf("client cert (%s) != filterctl\n", certHeader[0]), http.StatusUnauthorized)
+		systemFail(w, endpoint, fmt.Sprintf("unexpected client cert CN: '%s'", certHeader[0]), http.StatusUnauthorized)
+		return false
+	}
+
+	if !checkApiKey(w, r, endpoint) {
 		return false
 	}
 	return true
@@ -169,7 +173,7 @@ func checkApiKey(w http.ResponseWriter, r *http.Request, endpoint string) bool {
 	}
 
 	if len(apiKeyHeader) != 1 {
-		systemFail(w, endpoint, fmt.Sprintf("unexpected multiple api key header values: %d", len(apiKeyHeader)), http.StatusBadRequest)
+		systemFail(w, endpoint, fmt.Sprintf("unexpected multiple api key header values: %v", apiKeyHeader), http.StatusBadRequest)
 		return false
 	}
 
@@ -948,11 +952,12 @@ func main() {
 	if InsecureSkipClientCertificateValidation {
 		log.Printf("WARNING: client certificate validation disabled\n")
 	}
-	viper.SetConfigFile("/etc/filterctld/config.yaml")
+	configFileName := "/etc/filterctld/config.yaml"
+	viper.SetConfigFile(configFileName)
 
 	err = viper.ReadInConfig()
 	if err != nil {
-		log.Fatalf("Error reading /etc/filterctld/config: %v", err)
+		log.Fatalf("Error reading %s: %v", configFileName, err)
 	}
 	if Verbose {
 		viper.Set("verbose", true)
