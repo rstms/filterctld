@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,7 +57,9 @@ type ClassResponse struct {
 
 type ScanResponse struct {
 	api.Response
-	Books []string
+	Whitelisted bool
+	Book        string
+	Books       []string
 }
 
 type PasswordResponse struct {
@@ -779,7 +782,15 @@ func handleScanAddress(w http.ResponseWriter, r *http.Request) {
 	response.Message = apiResponse.Message
 	response.Books = make([]string, len(apiResponse.Books))
 	for i, book := range apiResponse.Books {
-		response.Books[i] = book.BookName
+		if book.BookName == "whitelist" {
+			response.Whitelisted = true
+		} else {
+			response.Books[i] = book.BookName
+		}
+	}
+	if len(response.Books) > 0 {
+		slices.Sort(response.Books)
+		response.Book = response.Books[0]
 	}
 	succeed(w, response.Message, &response)
 }
