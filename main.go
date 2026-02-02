@@ -57,9 +57,9 @@ type ClassResponse struct {
 
 type ScanResponse struct {
 	api.Response
-	Whitelisted bool
 	Book        string
 	Books       []string
+	Whitelisted bool
 }
 
 type PasswordResponse struct {
