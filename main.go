@@ -780,12 +780,12 @@ func handleScanAddress(w http.ResponseWriter, r *http.Request) {
 	response.Request = requestString
 	response.Success = true
 	response.Message = apiResponse.Message
-	response.Books = make([]string, len(apiResponse.Books))
-	for i, book := range apiResponse.Books {
+	response.Books = []string{}
+	for _, book := range apiResponse.Books {
 		if book.BookName == "whitelist" {
 			response.Whitelisted = true
 		} else {
-			response.Books[i] = book.BookName
+			response.Books = append(response.Books, book.BookName)
 		}
 	}
 	if len(response.Books) > 0 {
