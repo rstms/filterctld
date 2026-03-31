@@ -223,10 +223,16 @@ func TestDeleteAllAddresses(t *testing.T) {
 	deleteBook(t, user, book2)
 }
 
-func deleteAddress(t *testing.T, user, book, address string) *http.Response {
+func deleteAddress(t *testing.T, user, book, address string) api.Response {
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/filterctl/address/%s/%s/%s/", user, book, address), nil)
-	response := callHandler("DELETE /filterctl/address/{user}/{book}/{address}/", handleDeleteAddress, req)
-	require.Equal(t, response.StatusCode, http.StatusOK)
+	result := callHandler("DELETE /filterctl/address/{user}/{book}/{address}/", handleDeleteAddress, req)
+	require.Equal(t, result.StatusCode, http.StatusOK)
+	defer result.Body.Close()
+	data, err := io.ReadAll(result.Body)
+	require.Nil(t, err)
+	response := api.Response{}
+	err = json.Unmarshal(data, &response)
+	require.Nil(t, err)
 	return response
 }
 

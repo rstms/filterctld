@@ -743,10 +743,10 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if Verbose {
-			log.Printf("response: %v\n", response)
+			log.Printf("response: %+v\n", response)
 		}
 		if len(deleteFromBooks) > 1 && strings.HasPrefix(response.Message, "deleted:") {
-			multiResponseMessage = responseMessage
+			multiResponseMessage = response.Message
 		}
 		responseMessage = response.Message
 	}
