@@ -731,6 +731,7 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var responseMessage string
+	var multiResponseMessage string
 	for _, deleteBook := range deleteFromBooks {
 
 		response, err := mab.DeleteAddress(username, deleteBook, address)
@@ -744,7 +745,13 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 		if Verbose {
 			log.Printf("response: %v\n", response)
 		}
+		if len(deleteFromBooks) > 1 && strings.HasPrefix(response.Message, "deleted:") {
+			multiResponseMessage = responseMessage
+		}
 		responseMessage = response.Message
+	}
+	if multiResponseMessage != "" {
+		responseMessage = multiResponseMessage
 	}
 	succeed(w, responseMessage, &api.Response{User: username, Request: requestString, Message: responseMessage, Success: true})
 	return
