@@ -198,6 +198,31 @@ func TestDeleteAddress(t *testing.T) {
 	deleteBook(t, user, book)
 }
 
+func TestDeleteAllAddresses(t *testing.T) {
+	Initialize(t)
+	user := viper.GetString("test_user")
+	book1 := viper.GetString("test_book") + "_1"
+	book2 := viper.GetString("test_book") + "_2"
+	addr := viper.GetString("test_address")
+	for _, book := range []string{book1, book2} {
+		if isBook(t, user, book) {
+			deleteBook(t, user, book)
+		}
+		createBook(t, user, book)
+		addAddress(t, user, book, addr)
+	}
+	require.False(t, hasAddress(t, user, book1, addr))
+	require.True(t, hasAddress(t, user, book2, addr))
+
+	response := deleteAddress(t, user, "*", addr)
+	log.Printf("%+v", response)
+
+	require.False(t, hasAddress(t, user, book1, addr))
+	require.False(t, hasAddress(t, user, book2, addr))
+	deleteBook(t, user, book1)
+	deleteBook(t, user, book2)
+}
+
 func deleteAddress(t *testing.T, user, book, address string) *http.Response {
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/filterctl/address/%s/%s/%s/", user, book, address), nil)
 	response := callHandler("DELETE /filterctl/address/{user}/{book}/{address}/", handleDeleteAddress, req)

@@ -715,15 +715,38 @@ func handleDeleteAddress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	response, err := mab.DeleteAddress(username, bookname, address)
-	if err != nil {
-		fail(w, username, requestString, fmt.Sprintf("api.DeleteAddress failed: %v", err), http.StatusInternalServerError)
-		return
+
+	deleteFromBooks := []string{}
+	if bookname == "*" {
+		booksResponse, err := mab.GetBooks(username)
+		if err != nil {
+			fail(w, username, requestString, fmt.Sprintf("api GetBooks failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		for _, book := range booksResponse.Books {
+			deleteFromBooks = append(deleteFromBooks, book.BookName)
+		}
+	} else {
+		deleteFromBooks = append(deleteFromBooks, bookname)
 	}
-	if Verbose {
-		log.Printf("response: %v\n", response)
+
+	var responseMessage string
+	for _, deleteBook := range deleteFromBooks {
+
+		response, err := mab.DeleteAddress(username, deleteBook, address)
+		if Verbose {
+			log.Printf("deleting %s from book: %s\n", address, deleteBook)
+		}
+		if err != nil {
+			fail(w, username, requestString, fmt.Sprintf("api.DeleteAddress failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if Verbose {
+			log.Printf("response: %v\n", response)
+		}
+		responseMessage = response.Message
 	}
-	succeed(w, response.Message, &api.Response{User: username, Request: requestString, Message: response.Message, Success: true})
+	succeed(w, responseMessage, &api.Response{User: username, Request: requestString, Message: responseMessage, Success: true})
 	return
 }
 
